@@ -1170,6 +1170,11 @@ local LEGACY_NAME_CODE_MAP = {
 	},
 }
 
+local function normalize_legacy_name_code(code)
+	local legacy = LEGACY_NAME_CODE_MAP[code]
+	return legacy and legacy.code or code
+end
+
 local CURRENT_NAME_CODES = {}
 for _, data in pairs(PROVIDED_CODES[L["Name"]]) do
 	CURRENT_NAME_CODES[data.code] = true
@@ -1679,6 +1684,13 @@ local function update_text(font_string, event)
 	code = normalize_legacy_health_percent_code(code)
 	code = normalize_legacy_power_code(code)
 	code = normalize_legacy_pvp_timer_code(code)
+	-- Saved profiles retain historical stock source after an addon upgrade.
+	-- Angle now supplies one suffix string, not three formatting arguments.
+	-- Reuse the exact stock compatibility map; never patch arbitrary Lua code
+	-- or fill missing arguments that could mask a custom script's own error.
+	if is_name_text_name(font_string.luatexts_name) then
+		code = normalize_legacy_name_code(code)
+	end
 	if code ~= font_string.db.code then
 		font_string.db.code = code
 	end

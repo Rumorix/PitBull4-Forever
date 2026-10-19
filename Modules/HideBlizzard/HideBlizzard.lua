@@ -26,6 +26,9 @@ PitBull4_HideBlizzard:SetDefaults({}, {
 
 function PitBull4_HideBlizzard:OnEnable()
 	self:RegisterEvent("ADDON_LOADED")
+	self:RegisterEvent("PLAYER_ENTERING_WORLD", "HidePetFrame")
+	self:RegisterEvent("UNIT_PET", "HidePetFrame")
+	self:RegisterEvent("PLAYER_REGEN_ENABLED", "HidePetFrame")
 	self:UpdateFrames()
 end
 
@@ -38,6 +41,9 @@ function PitBull4_HideBlizzard:OnProfileChanged()
 end
 
 function PitBull4_HideBlizzard:ADDON_LOADED(_, addon)
+	if addon == "Blizzard_UnitFrame" then
+		self:HidePetFrame()
+	end
 	if addon == "Blizzard_ArenaUI" or addon == "Blizzard_CompactRaidFrames" then
 		self:UpdateFrames()
 	end
@@ -59,6 +65,9 @@ function PitBull4_HideBlizzard:UpdateFrames()
 			LibStub("AceConfigRegistry-3.0"):NotifyChange("PitBull4")
 		end
 	end
+	-- Player's hide pass can finish before PetFrame exists. Pet discovery must
+	-- remain independent of currently_hidden.player and retry on lifecycle events.
+	self:HidePetFrame()
 end
 PitBull4_HideBlizzard.UpdateFrames = PitBull4:OutOfCombatWrapper(PitBull4_HideBlizzard.UpdateFrames)
 
@@ -109,6 +118,27 @@ local function hook_frames(raw, ...)
 	end
 end
 
+local hidden_pet_frames = setmetatable({}, { __mode = "k" })
+
+function PitBull4_HideBlizzard:HidePetFrame(event, unit)
+	if event == "UNIT_PET" and unit ~= "player" then return end
+	-- Also check actual lockdown: on a combat reload the core wrapper's cached
+	-- combat state may not be initialized yet. The regen event retries discovery.
+	if InCombatLockdown() then return end
+	if not self:IsEnabled() or not self.db.profile.global.player then return end
+	local frame = _G.PetFrame
+	if not frame then return end
+	if not hidden_pet_frames[frame] then
+		-- Reuse the existing hiding policy, once per actual frame. Do not replace
+		-- Blizzard mixins/Show methods or add hooks while combat is locked down.
+		hook_frames(false, frame)
+		hidden_pet_frames[frame] = true
+	else
+		frame:Hide()
+	end
+end
+PitBull4_HideBlizzard.HidePetFrame = PitBull4:OutOfCombatWrapper(PitBull4_HideBlizzard.HidePetFrame)
+
 -----------------------------------------------------------------------------
 
 function hiders:player()
@@ -128,7 +158,7 @@ function hiders:player()
 	PlayerFrame:SetUserPlaced(true)
 	PlayerFrame:SetDontSavePosition(true)
 
-	hook_frames(false, PetFrame) -- this should be parented to PlayerFrame, but people say it has started showing again?
+	self:HidePetFrame()
 end
 
 if ClassicExpansionAtLeast(LE_EXPANSION_CATACLYSM) then
