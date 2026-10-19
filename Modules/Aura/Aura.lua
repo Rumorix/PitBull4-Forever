@@ -28,7 +28,7 @@ end)
 
 function PitBull4_Aura:OnEnable()
 	self:RegisterEvent("PLAYER_REGEN_DISABLED")
-	self:RegisterEvent("PLAYER_REGEN_ENABLED", "UpdateAll")
+	self:RegisterEvent("PLAYER_REGEN_ENABLED", "Lorenzo121NativeRecoveryAfterCombat")
 	self:RegisterEvent("PLAYER_ENTERING_WORLD")
 	self:RegisterEvent("UNIT_AURA")
 	-- Patch 031: Blizzard's 12.1 AuraContainer tracks a unit token, not the
@@ -59,6 +59,8 @@ end
 
 function PitBull4_Aura:OnDisable()
 	timerFrame:Hide()
+	self:Lorenzo121CancelNativeRecovery()
+	self:Lorenzo121DisableNativeFrames()
 end
 
 function PitBull4_Aura:OnProfileChanged()
