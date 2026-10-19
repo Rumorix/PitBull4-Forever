@@ -1,0 +1,448 @@
+local PitBull4 = _G.PitBull4
+local L = PitBull4.L
+
+-- Midnight-safe replacement for the legacy VisualHeal overlay.
+--
+-- The old PitBull4 VisualHeal control is based on manual width/height math
+-- (heal / maxHealth, absorb / maxHealth).  With Midnight secret values that can
+-- throw forbidden arithmetic/comparison errors.  This version uses Blizzard's
+-- UnitHealPredictionCalculator and passes the returned values directly into
+-- StatusBar APIs instead.  It intentionally does not request a layout update and
+-- it never deletes/reparents secure group-frame children; this keeps party/raid
+-- frames stable while still showing damage absorbs.  Per-frame texture/color
+-- updates are cached so frequent absorb/heal events do less work in dungeons.
+
+local CreateUnitHealPredictionCalculator = _G.CreateUnitHealPredictionCalculator
+local UnitGetDetailedHealPrediction = _G.UnitGetDetailedHealPrediction
+local Enum = _G.Enum
+local CreateFrame = _G.CreateFrame
+local UnitGetTotalHealAbsorbs = _G.UnitGetTotalHealAbsorbs
+local pairs = _G.pairs
+local pcall = _G.pcall
+local type = _G.type
+local unpack = _G.unpack
+
+local BAR_KEYS = { "incoming", "player", "absorb", "heal_absorb" }
+
+local PitBull4_VisualHeal = PitBull4:NewModule("VisualHeal")
+
+PitBull4_VisualHeal:SetModuleType("custom")
+PitBull4_VisualHeal:SetName(L["Visual heal"] or "Visual heal")
+PitBull4_VisualHeal:SetDescription(L["Visualises healing done by you and your group members before it happens."] or "Shows heal prediction and absorption shields.")
+PitBull4_VisualHeal:SetDefaults({
+	show_overheal = true,
+	show_overabsorb = true,
+}, {
+	incoming_color = { 0.4, 0.6, 0.4, 0.35 },
+	outgoing_color = { 0, 1, 0, 0.35 },
+	outgoing_color_overheal = { 1, 0, 0, 0.35 },
+	absorb_color = { 0.98, 0.98, 1.0, 0.42 },
+	heal_absorb_color = { 0.70, 0.20, 1.0, 0.58 },
+	auto_luminance = true,
+})
+
+local calculator
+local calculator_failed
+local update_all_scheduled
+
+local function get_calculator()
+	if calculator or calculator_failed then
+		return calculator
+	end
+	if not CreateUnitHealPredictionCalculator or not UnitGetDetailedHealPrediction then
+		calculator_failed = true
+		return nil
+	end
+	local ok, value = pcall(CreateUnitHealPredictionCalculator)
+	if ok and value then
+		calculator = value
+		if calculator.SetMaximumHealthMode and Enum and Enum.UnitMaximumHealthMode then
+			pcall(calculator.SetMaximumHealthMode, calculator, Enum.UnitMaximumHealthMode.Default)
+		end
+		if calculator.SetDamageAbsorbClampMode and Enum and Enum.UnitDamageAbsorbClampMode then
+			pcall(calculator.SetDamageAbsorbClampMode, calculator, Enum.UnitDamageAbsorbClampMode.MaximumHealth)
+		end
+	else
+		calculator_failed = true
+	end
+	return calculator
+end
+
+local function call(method, object, ...)
+	if not object or not method then
+		return nil
+	end
+	local ok, a, b, c, d = pcall(method, object, ...)
+	if ok then
+		return a, b, c, d
+	end
+	return nil
+end
+
+local function get_statusbar_texture(health_bar)
+	local status_texture = health_bar.GetStatusBarTexture and health_bar:GetStatusBarTexture()
+	if status_texture and status_texture.GetTexture then
+		return status_texture:GetTexture()
+	end
+	return [[Interface\TargetingFrame\UI-StatusBar]]
+end
+
+local function sync_bars_to_healthbar(bars, health_bar)
+	local orientation = health_bar.GetOrientation and health_bar:GetOrientation() or "HORIZONTAL"
+	local reverse = health_bar.GetReverse and health_bar:GetReverse() or health_bar.reverse
+	local texture = get_statusbar_texture(health_bar)
+	local frame_level = health_bar.GetFrameLevel and health_bar:GetFrameLevel()
+	if bars._health_bar == health_bar and bars._orientation == orientation and bars._reverse == reverse and bars._texture == texture and bars._frame_level == frame_level then
+		return
+	end
+	for i = 1, #BAR_KEYS do
+		local key = BAR_KEYS[i]
+		local bar = bars[key]
+		if bar then
+			pcall(bar.ClearAllPoints, bar)
+			pcall(bar.SetAllPoints, bar, health_bar)
+			if bar.SetOrientation then
+				pcall(bar.SetOrientation, bar, orientation)
+			end
+			if bar.SetReverseFill then
+				pcall(bar.SetReverseFill, bar, reverse)
+			end
+			pcall(bar.SetStatusBarTexture, bar, texture)
+			if frame_level and bar.SetFrameLevel then
+				pcall(bar.SetFrameLevel, bar, frame_level + i)
+			end
+		end
+	end
+	bars._health_bar = health_bar
+	bars._orientation = orientation
+	bars._reverse = reverse
+	bars._texture = texture
+	bars._frame_level = frame_level
+end
+
+local function apply_bar_color(bar, color)
+	if not bar or type(color) ~= "table" then return end
+	local r, g, b, a = color[1], color[2], color[3], color[4]
+	if bar._pb4_vh_r == r and bar._pb4_vh_g == g and bar._pb4_vh_b == b and bar._pb4_vh_a == a then
+		return
+	end
+	if pcall(bar.SetStatusBarColor, bar, r, g, b, a) then
+		bar._pb4_vh_r, bar._pb4_vh_g, bar._pb4_vh_b, bar._pb4_vh_a = r, g, b, a
+	end
+end
+
+local function make_prediction_bar(parent, r, g, b, a, level_offset)
+	local ok, bar = pcall(CreateFrame, "StatusBar", nil, parent)
+	if not ok or not bar then
+		return nil
+	end
+	pcall(bar.EnableMouse, bar, false)
+	pcall(bar.SetAllPoints, bar, parent)
+	pcall(bar.SetMinMaxValues, bar, 0, 1)
+	pcall(bar.SetValue, bar, 0)
+	pcall(bar.SetStatusBarColor, bar, r, g, b, a)
+	if parent.GetFrameLevel and bar.SetFrameLevel then
+		pcall(bar.SetFrameLevel, bar, parent:GetFrameLevel() + (level_offset or 1))
+	end
+	pcall(bar.Hide, bar)
+	return bar
+end
+
+local function ensure_bars(frame, health_bar)
+	local bars = frame.VisualHealMidnight
+	local db = PitBull4_VisualHeal.db.profile.global
+	if not bars then
+		bars = {}
+		local r, g, b, a = unpack(db.incoming_color)
+		bars.incoming = make_prediction_bar(health_bar, r, g, b, a, 1)
+		r, g, b, a = unpack(db.outgoing_color)
+		bars.player = make_prediction_bar(health_bar, r, g, b, a, 2)
+		r, g, b, a = unpack(db.absorb_color)
+		bars.absorb = make_prediction_bar(health_bar, r, g, b, a, 3)
+		r, g, b, a = unpack(db.heal_absorb_color)
+		bars.heal_absorb = make_prediction_bar(health_bar, r, g, b, a, 4)
+		if not bars.incoming or not bars.player or not bars.absorb or not bars.heal_absorb then
+			for _, bar in pairs(bars) do
+				if bar and bar.Hide then
+					pcall(bar.Hide, bar)
+				end
+			end
+			return nil
+		end
+		frame.VisualHealMidnight = bars
+	elseif not bars.heal_absorb then
+		local r, g, b, a = unpack(db.heal_absorb_color)
+		bars.heal_absorb = make_prediction_bar(health_bar, r, g, b, a, 4)
+		if not bars.heal_absorb then
+			return nil
+		end
+	end
+
+	sync_bars_to_healthbar(bars, health_bar)
+	return bars
+end
+
+local function hide_bars(frame)
+	local bars = frame.VisualHealMidnight
+	if not bars then
+		return
+	end
+	for i = 1, #BAR_KEYS do
+		local bar = bars[BAR_KEYS[i]]
+		if bar and bar.Hide then
+			pcall(bar.Hide, bar)
+		end
+	end
+end
+
+local function set_bar_value(bar, max_value, value)
+	if not bar then return end
+	local interpolation = Enum and Enum.StatusBarInterpolation and Enum.StatusBarInterpolation.Immediate
+	local ok
+	if interpolation then
+		ok = pcall(bar.SetMinMaxValues, bar, 0, max_value, interpolation)
+	else
+		ok = pcall(bar.SetMinMaxValues, bar, 0, max_value)
+	end
+	if not ok then
+		pcall(bar.Hide, bar)
+		return
+	end
+	if interpolation then
+		ok = pcall(bar.SetValue, bar, value or 0, interpolation)
+	else
+		ok = pcall(bar.SetValue, bar, value or 0)
+	end
+	if ok then
+		pcall(bar.Show, bar)
+	else
+		pcall(bar.Hide, bar)
+	end
+end
+
+local function update_calculator(unit)
+	local calc = get_calculator()
+	if not calc then
+		return nil
+	end
+	-- Reusing one calculator is fine, but reset it before switching units so
+	-- party/raid frames do not inherit stale player/target data.
+	if calc.ResetPredictedValues then
+		pcall(calc.ResetPredictedValues, calc)
+	end
+
+	-- Use nil as the healer filter first.  Passing "player" works for player/target
+	-- predictions, but can miss absorbs on party/raid members that were not applied
+	-- by the player.  nil asks Blizzard for all relevant prediction/absorb data.
+	local ok = pcall(UnitGetDetailedHealPrediction, unit, nil, calc)
+	if not ok then
+		ok = pcall(UnitGetDetailedHealPrediction, unit, "player", calc)
+	end
+	if not ok then
+		return nil
+	end
+	return calc
+end
+
+local function queue_update_all(self)
+	if update_all_scheduled then
+		return
+	end
+	update_all_scheduled = true
+	if self.ScheduleTimer then
+		self:ScheduleTimer(function()
+			update_all_scheduled = nil
+			self:UpdateAll()
+		end, 0.05)
+	else
+		update_all_scheduled = nil
+		self:UpdateAll()
+	end
+end
+
+local function colors_match(color, r, g, b, a)
+	return type(color) == "table" and color[1] == r and color[2] == g and color[3] == b and color[4] == a
+end
+
+local function apply_visualheal_defaults_if_needed(db)
+	if not db then return end
+	if db.absorb_color == nil or colors_match(db.absorb_color, .55, .35, .85, 0.55) then
+		db.absorb_color = { 0.98, 0.98, 1.0, 0.42 }
+	end
+	if db.heal_absorb_color == nil then
+		db.heal_absorb_color = { 0.70, 0.20, 1.0, 0.58 }
+	end
+end
+
+local function get_heal_absorbs(calc, unit)
+	-- Blizzard iterated the Midnight prediction calculator API during testing,
+	-- so accept several likely method names and fall back to the legacy unit API.
+	-- The returned value may be secret; do not compare or do arithmetic on it.
+	local value = call(calc.GetHealAbsorbs, calc)
+	if value ~= nil then return value end
+	value = call(calc.GetHealingAbsorbs, calc)
+	if value ~= nil then return value end
+	value = call(calc.GetTotalHealAbsorbs, calc)
+	if value ~= nil then return value end
+	if UnitGetTotalHealAbsorbs then
+		local ok, total = pcall(UnitGetTotalHealAbsorbs, unit)
+		if ok then return total end
+	end
+	return nil
+end
+
+function PitBull4_VisualHeal:OnEnable()
+	apply_visualheal_defaults_if_needed(self.db and self.db.profile and self.db.profile.global)
+	self:RegisterEvent("UNIT_HEAL_PREDICTION")
+	self:RegisterEvent("UNIT_MAXHEALTH", "UNIT_HEAL_PREDICTION")
+	self:RegisterEvent("UNIT_ABSORB_AMOUNT_CHANGED")
+	self:RegisterEvent("UNIT_HEAL_ABSORB_AMOUNT_CHANGED", "UNIT_ABSORB_AMOUNT_CHANGED")
+end
+
+function PitBull4_VisualHeal:UpdateFrame(frame)
+	local unit = frame.unit
+	local health_bar = frame.HealthBar
+	if not unit or not health_bar then
+		hide_bars(frame)
+		return false
+	end
+
+	local calc = update_calculator(unit)
+	if not calc then
+		hide_bars(frame)
+		return false
+	end
+
+	local max_health = call(calc.GetMaximumHealth, calc)
+	local all_healing, player_healing, other_healing = call(calc.GetIncomingHeals, calc)
+	local damage_absorbs = call(calc.GetDamageAbsorbs, calc)
+	local heal_absorbs = get_heal_absorbs(calc, unit)
+	local bars = ensure_bars(frame, health_bar)
+	if not bars then
+		return false
+	end
+
+	local db = self.db.profile.global
+	apply_bar_color(bars.incoming, db.incoming_color)
+	apply_bar_color(bars.player, db.outgoing_color)
+	apply_bar_color(bars.absorb, db.absorb_color)
+	apply_bar_color(bars.heal_absorb, db.heal_absorb_color)
+
+	-- Do not compare or divide these values.  In Midnight they can be secret.
+	-- Passing them directly into StatusBar APIs is the supported pattern.
+	set_bar_value(bars.incoming, max_health or 1, other_healing or all_healing or 0)
+	set_bar_value(bars.player, max_health or 1, player_healing or 0)
+	set_bar_value(bars.absorb, max_health or 1, damage_absorbs or 0)
+	set_bar_value(bars.heal_absorb, max_health or 1, heal_absorbs or 0)
+
+	return false
+end
+
+function PitBull4_VisualHeal:UNIT_HEAL_PREDICTION(_, unit)
+	if not unit then
+		return
+	end
+	self:UpdateForUnitID(unit)
+end
+
+function PitBull4_VisualHeal:UNIT_ABSORB_AMOUNT_CHANGED(_, unit)
+	if unit then
+		self:UpdateForUnitID(unit)
+	end
+	-- Party/raid absorb events are not always enough to hit the exact PitBull4
+	-- SecureGroupHeader unit token.  A throttled full refresh is cheap for M+ and
+	-- makes absorbs appear on member frames as well as singleton frames.
+	queue_update_all(self)
+end
+
+function PitBull4_VisualHeal:ClearFrame(frame)
+	hide_bars(frame)
+	return false
+end
+
+PitBull4_VisualHeal.OnHide = PitBull4_VisualHeal.ClearFrame
+
+PitBull4_VisualHeal:SetColorOptionsFunction(function(self)
+	local function get(info)
+		return unpack(self.db.profile.global[info[#info]])
+	end
+	local function set(info, r, g, b, a)
+		local color = self.db.profile.global[info[#info]]
+		color[1], color[2], color[3], color[4] = r, g, b, a
+		self:UpdateAll()
+	end
+	return 'incoming_color', {
+		type = 'color',
+		name = L["Incoming color"] or "Incoming color",
+		desc = L["The color of the bar that shows incoming heals from other players."] or "Incoming heal overlay color.",
+		get = get,
+		set = set,
+		hasAlpha = true,
+		width = 'double',
+	}, 'outgoing_color', {
+		type = 'color',
+		name = L["Outgoing color (no overheal)"] or "Outgoing color",
+		desc = L["The color of the bar that shows your own heals, when no overhealing is due."] or "Your incoming heal overlay color.",
+		get = get,
+		set = set,
+		hasAlpha = true,
+		width = 'double',
+	}, 'absorb_color', {
+		type = 'color',
+		name = L["Absorb color"] or "Absorb color",
+		desc = L["The color of the bar that shows absorption shields."] or "Absorption shield overlay color.",
+		get = get,
+		set = set,
+		hasAlpha = true,
+		width = 'double',
+	}, 'heal_absorb_color', {
+		type = 'color',
+		name = L["Heal absorb color"] or "Heal absorb color",
+		desc = L["The color of the bar that shows healing absorbs."] or "Healing absorb overlay color.",
+		get = get,
+		set = set,
+		hasAlpha = true,
+		width = 'double',
+	}, function(info)
+		self.db.profile.global.incoming_color = { 0.4, 0.6, 0.4, 0.35 }
+		self.db.profile.global.outgoing_color = { 0, 1, 0, 0.35 }
+		self.db.profile.global.outgoing_color_overheal = { 1, 0, 0, 0.35 }
+		self.db.profile.global.absorb_color = { 0.98, 0.98, 1.0, 0.42 }
+		self.db.profile.global.heal_absorb_color = { 0.70, 0.20, 1.0, 0.58 }
+		self.db.profile.global.auto_luminance = true
+		self:UpdateAll()
+	end
+end)
+
+
+PitBull4_VisualHeal:SetLayoutOptionsFunction(function(self)
+	local function disabled(info)
+		return not PitBull4.Options.GetLayoutDB(self).enabled
+	end
+
+	return 'show_overheal', {
+		type = 'toggle',
+		name = L["Show overheals"] or "Show overheals",
+		desc = L["Show overheals past the end of the health bar."] or "Show overheals past the end of the health bar.",
+		get = function(info)
+			return PitBull4.Options.GetLayoutDB(self).show_overheal
+		end,
+		set = function(info, value)
+			PitBull4.Options.GetLayoutDB(self).show_overheal = value
+			self:UpdateAll()
+		end,
+		disabled = disabled,
+	}, 'show_overabsorb', {
+		type = 'toggle',
+		name = L["Show overabsorb"] or "Show overabsorb",
+		desc = L["Show absorb past the end of the health bar."] or "Show absorb past the end of the health bar.",
+		get = function(info)
+			return PitBull4.Options.GetLayoutDB(self).show_overabsorb
+		end,
+		set = function(info, value)
+			PitBull4.Options.GetLayoutDB(self).show_overabsorb = value
+			self:UpdateAll()
+		end,
+		disabled = disabled,
+	}
+end)

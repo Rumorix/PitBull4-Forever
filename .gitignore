@@ -1,0 +1,22 @@
+# Local development tools and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Generated or local-only artifacts
+.release/
+build/
+dist/
+*.zip
+*.log
+*.swp
+
+# Never commit credentials or local player settings
+.env
+.env.*
+!.env.example
+WTF/
+SavedVariables/
+
+# NOTE: Do NOT ignore Libs/; embedded libraries must be in Git.
