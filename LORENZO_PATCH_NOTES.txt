@@ -1,0 +1,101 @@
+Patch 090 - LegacyProfileUpgrade
+
+- Added a new top-level Profile Upgrade page between Edit Mode Backup and Profiles.
+- The page scans the currently selected profile for known legacy stock LuaTexts that need Midnight 12.1 compatibility updates.
+- Added exact migration support for the five stock Name LuaText presets shipped by older PitBull releases; their saved source code is upgraded to the current secret-safe SetFormattedText format without changing layout placement, font, size or other visual settings.
+- The same one-click upgrade also persists the maintained Class, Health-percent and Power legacy normalizations across every layout in the current profile.
+- Custom Name LuaTexts are detected and reported but intentionally left unchanged.
+- If no full safety snapshot exists, Profile Upgrade creates one automatically before modifying the profile. Existing full safety snapshots are preserved.
+- The UI reloads after a successful migration so LuaTexts and frame state are rebuilt from the upgraded profile.
+- Retains Patch 089 stable Config Mode preview envelope, Patch 084 Edit Mode frame inspector, Patch 083 backup/restore tooling, and all previous Midnight 12.1 fixes.
+
+035 - Selective Frame Fix
+- Refresh target-of-target and focus-target when their unit GUID disappears.
+- Use native dragging for target-of-target and focus-target when frame snapping is enabled.
+- Preserve v34 group movement, config mode, and aura modules.
+
+036 - Aura Filter / Singleton Lifecycle
+- Correct recursive copy of nested Aura filter option tables.
+- Restore a previously deactivated singleton frame when re-enabled and its unit exists.
+- Preserve Aura runtime implementation and LuaTexts unchanged.
+- Mage text disappearance remains unverified; no speculative class-specific workaround.
+
+037 - Config Exit Visibility
+- Reconcile live singleton visibility after leaving config preview with or without an existing unit.
+- Preserve UnitWatch for subsequent target acquisition.
+- Preserve existing aura and LuaTexts modules.
+
+038 - Profile Font / Config Watch
+- Safely handle missing font_size and font_multiplier during profile transitions.
+- Re-arm native UnitWatch on config exit rather than manually forcing visibility.
+- Aura and LuaTexts modules unchanged.
+
+039 - Party Preview & Totem Sound
+- Handle party1..party4 config previews without parsing as raid sizes.
+- Guard unrecognized raid preview modes against string arithmetic.
+- Remove missing DropOnGround.ogg registration and select existing shared media sounds safely.
+- Preserve v38 UnitWatch, Aura and LuaTexts logic.
+
+042 - Aura Roster Refresh
+- Refresh existing managed aura containers when a nameplate unit appears.
+- Refresh party and raid managed aura containers on roster changes.
+- Keep aura ownership filters, Mage text fixes and combat aura logic unchanged.
+
+044 - Stability Rollback
+- Restore v42 Aura Options and FilterEditor behavior; do not load broken v43 filter editor.
+- Restore v42 LuaTexts power rendering; remove v43 color-format fallback.
+- Retain v42 roster/nameplate aura refresh, Mage layout and profile behavior.
+- v43 startup, party frame and target text regressions require in-game verification.
+
+046 - Combined Aura Cap & Cross-Instance Refresh
+- Native AuraContainer uses one group per buff/debuff by default, enforcing the configured cap across all owners.
+- Prevents duplication caused by own/other group overlap without reading protected aura identity.
+- Add a per-layout switch to restore separate ownership size/border styling (with per-group caps).
+- Use neutral borders for combined groups; never falsely classify all auras as player-owned.
+- Reparse existing party/raid native containers on zone changes and delayed world entry.
+- Preserve v44 Mage text fixes and stable v42 native combat aura path.
+- Weapon enchantments remain separate from the buff cap.
+- v45 experimental profile diagnostics intentionally not included.
+
+047 - Aura Ownership Layout Sync & Diagnostics
+- Add explicit one-click ownership-color mode across saved layouts (split mode).
+- Add explicit one-click strict combined cap mode across saved layouts.
+- Preserve per-layout size settings and all profiles; no automatic mode changes.
+- Add /pitbull 121auracolors read-only diagnostic for per-layout strict mode and colors.
+- Add layout/mode visibility to existing native aura status output.
+- Keep v46 combined cap and cross-instance fixes unchanged; per-owner colors in strict mode remain unavailable on protected native buttons.
+
+048 - Cross-Zone Aura Fallback (experimental)
+- On out-of-combat roster/zone changes, use one combined native aura group for unreachable party/raid units when strict combined limit is off.
+- Preserve split ownership groups for reachable units and all v47 layout ownership settings.
+- Avoid changing protected aura groups in combat; normal native aura updates continue.
+
+049 - Metadata repair / tester diagnostics
+- Restore valid TOC metadata lost in v48.
+- Preserve v48 cross-zone aura behavior and all v47 settings.
+- Rogue poison rendering, arbitrary power LuaText formatting, and custom native aura filtering remain under investigation; no unsupported fix claimed.
+
+050 - Forever API Safety
+- Fixed aura option deep-copy table type check.
+- Hardened cross-zone unit API boolean checks against secret values.
+- Avoided unsafe aura index iteration where protected index detection is available.
+- Added C_Spell fallback for AceGUI spell drag/drop.
+- Kept native aura rendering and ownership layout behavior otherwise unchanged.
+
+051 - API Hardening: repair DogTagTexts TOCs; guard phase, visibility, connection checks against secret values; defensive legacy aura highlight iteration; remove duplicate C_Spell.GetSpellInfo fallback calls.
+
+052 - Forever identity cleanup: diagnostic prefixes and public slash commands use Forever naming. New commands: /pitbull auracolors, /pitbull foreverstatus, /pitbull forevernative. Legacy 121 commands retained as aliases. TOC branch now Forever; technical base provenance preserved.
+
+053 - Bartender drag compatibility: accept nil as the successful void return of the shared LibSimpleSticky StartMoving method; only explicit false selects the existing native fallback. This fixes ordinary mouse-release leaving the cursor-following updater installed when Bartender minor 3 loads before Forever's minor 3. Existing dependent-frame native movement and invalid-geometry guards retained. No shared-library changes.
+
+054 - Native Aura Filter UI: expose native PLAYER-only filter in buff/debuff dropdowns; clarify custom filters and weapon enchants. Preserve v53 Bartender fix.
+
+055 - Cross-zone pet ownership fallback now uses party owner reachability; avoid directly mutating CompactPartyFrame or unregistering UIParent roster updates in HideBlizzard. Edit Mode in-game validation required.
+
+060 - Health Gradient: change health color curve from Step to Linear. No protected health arithmetic; retain v59 aura and range changes.
+
+061 - Merge v60 + SoulShardsCompatibility sibling branch
+- Build from complete v60 HealthGradient, keeping v58 RangePetToTAura and v59 ToTAuraCombatRetry functionality.
+- Integrate the two changed SoulShards Lua modules from the independent v58 SoulShardsCompatibility branch; leave them byte-identical to the validated alternate build.
+- Refresh diagnostic prefixes, EN/DE main addon metadata, DogTag TOC versions, build marker and documentation.
+- Preserve all existing SavedVariables and configurations. WoW client validation is still required.

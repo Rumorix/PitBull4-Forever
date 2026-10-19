@@ -1,0 +1,30 @@
+## Interface: 120100, 16001
+## Title: PitBull Unit Frames 4.0
+## Notes: PitBull4 Forever v61: merged Soul Shards compatibility, ToT aura retries, pet range and health gradient.
+## Notes-deDE: PitBull4 Forever v61: Seelensplitter-Kompatibilitaet, ToT-Auren, Pet-Reichweite und Gesundheits-Farbverlauf.
+## Notes-esES: Marcos de unidad con temática canina. Guau. Guau. Auu.
+## Notes-esMX: Marcos de unidad con temática canina. Guau. Guau. Auu.
+## Notes-frFR: Fenêtres d’unité sur le thème des chiens. Ouaf. Wouf. Yap.
+## Notes-itIT: Riquadri unità a tema canino. Bau. Bau. Guai.
+## Notes-koKR: 강아지-테마의 유닛 프레임입니다. 으르렁. 왈왈. 깨갱.
+## Notes-ptBR: Quadros de unidade com tema de cachorro. Au. Au. Ganido.
+## Notes-ruRU: Рамки бойцов в собачьем стиле. Гав. Р-р-р. Тяв.
+## Notes-zhCN: 以狗为主题的单位框架。呜呜。汪汪。嗷呜。
+## Notes-zhTW: 狗狗主題的單位框架。嗚嗚。汪汪。嗷嗚。
+## Author: ckknight, Shekfi, Nebula
+## SavedVariables: PitBull4DB, PitBull4SafetyBackups
+## OptionalDeps: Ace3, LibSharedMedia-3.0, AceGUI-3.0-SharedMediaWidgets, LibDBIcon-1.0, LibBossIDs-1.0, LibDualSpec-1.0, LibPlayerSpells-1.0, LibSerialize, LibDeflate, Clique, Masque, Blizzard_AuraContainer
+## Version: PitBull4-Lorenzo-Forever-061-MergedFixes
+## X-Rumorix-Forever-Version: 061
+## X-Lorenzo-Branch: Forever
+## X-Lorenzo-Base: Midnight-12.1-Lorenzo-Patch030-AllLocaleLegacyRestore
+## X-Lorenzo-Locales: enUS, deDE, esES, esMX, frFR, itIT, koKR, ptBR, ruRU, zhCN, zhTW
+## IconTexture: Interface\AddOns\PitBull4\pitbull.tga
+
+## X-Curse-Project-ID: 7522
+## X-WoWI-ID: 20021
+## X-Wago-ID: LvNAmONo
+
+libs.xml
+load.xml
+modules.xml

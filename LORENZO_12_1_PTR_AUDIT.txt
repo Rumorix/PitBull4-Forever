@@ -1,0 +1,75 @@
+PitBull4 12.1 API / Spell-ID Audit - Patch 034
+Reviewed live UI source baseline: 12.1.0.69299
+Direct predecessor: Patch 033 / FortifyingBrewAuraAlias
+
+Change boundary
+---------------
+Patch 034 changes only MajorCooldownAuras built-in spell candidate lists,
+public cast-to-aura alias tables, diagnostics, metadata, and documentation.
+It does not change Blizzard protected container APIs, protected state-driver
+lifecycle, ImportantDebuffs, normal Aura rendering, tooltip policy, PowerBar,
+player-resource pings, or dynamic target/focus refresh.
+
+Aura identity contract
+----------------------
+- Options and saved per-spell settings remain keyed to familiar spellbook/cast
+  IDs.
+- Static public alias tables expand an enabled configuration ID into known
+  public active-aura IDs before assigning includeSpellIDs to Blizzard's
+  protected AuraContainer.
+- PitBull never reads an assigned aura to discover or validate that mapping.
+- Cast IDs are retained in the candidate set for compatibility with client/spec
+  variants that may expose the same ID as the active aura.
+- Custom user-entered offensive IDs remain direct aura IDs and are not remapped.
+
+Patch 034 alias groups
+----------------------
+Offensive:
+191427 -> 191427,162264
+365350 -> 365350,365362
+228260 -> 228260,194249
+185313 -> 185313,185422
+
+Defensive:
+51052  -> 51052,145629
+196718 -> 196718,209426
+203720 -> 203720,203819
+342245 -> 342245,342246
+115203 -> 115203,120954
+62618  -> 62618,81782
+1856   -> 1856,11327,115193
+98008  -> 98008,325174
+97462  -> 97462,97463
+
+Aura-only exclusions
+--------------------
+205021 Ray of Frost
+109304 Exhilaration
+108280 Healing Tide Totem
+198103 Earth Elemental
+
+Deferred special case
+---------------------
+204021 Fiery Brand is not automatically aliased to a hidden self aura. If live
+behavior proves it should be represented, it requires a separately reviewed
+protected target/self-effect design.
+
+Regression contract
+-------------------
+- Fortifying Brew 115203/120954 must continue to match.
+- Patch 028 must still prevent RegisterStateDriver construction/replacement in
+  combat and reconcile deferred state only after PLAYER_REGEN_ENABLED.
+- Patch 031 dynamic AuraContainer refresh must remain unchanged.
+- Patch 032 player-resource ping behavior must remain unchanged.
+- Major Cooldown Auras and Important Debuffs must remain separate.
+- No protected/secret aura values may be compared, formatted, used as keys, or
+  converted to addon control-flow booleans.
+- No SavedVariables migration is required.
+
+Verification requirements
+-------------------------
+- Confirm all 13 alias groups exist exactly once in the public alias tables.
+- Confirm the four excluded IDs are absent from the built-in aura-only lists.
+- Confirm offensive and defensive builders both consume their alias maps.
+- Confirm TOC/status/debug prefixes report Patch 034.
+- Verify ZIP structure, CRC, predecessor diff, and extracted byte identity.

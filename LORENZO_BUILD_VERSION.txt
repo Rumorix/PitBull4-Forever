@@ -1,0 +1,4 @@
+PitBull4-Lorenzo-Forever-061-MergedFixes
+Base: PitBull4-Lorenzo-Forever-060-HealthGradient.
+Additional merged code: two SoulShards Lua modules from PitBull4-Lorenzo-Forever-058-SoulShardsCompatibility (sibling v58 branch).
+Inherits v58 RangePetToTAura, v59 ToTAuraCombatRetry and v60 HealthGradient.

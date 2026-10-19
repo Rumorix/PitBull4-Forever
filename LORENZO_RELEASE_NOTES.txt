@@ -1,0 +1,28 @@
+PitBull4 Lorenzo Forever v61 - Merged Fixes
+Build: PitBull4-Lorenzo-Forever-061-MergedFixes
+Date: 2026-10-19
+
+BASE AND MERGE
+- Direct base: v60 HealthGradient (from v59 ToTAuraCombatRetry, from v58 RangePetToTAura).
+- Independently merged and preserved the two functional SoulShards compatibility files from the separate v58 SoulShardsCompatibility branch.
+- No branch has been silently substituted for the other. No saved-variable migration is introduced.
+
+MERGED FUNCTIONAL CHANGES
+- Soul Shards: avoid a missing ShardTemplate inherited-node error. Prefer the native template when confirmed in the registry; otherwise use packaged artwork as a simplified fallback without native animations.
+- Soul Shards: validate public finite power values before arithmetic; preserve Destruction partial shards and Affliction/Demonology whole shards; retain layout/orientation and click-through settings. (From the validated v58 SoulShardsCompatibility branch.)
+- Party/Raid Pet range: use owner range as an approximation for pet range and forward potentially secret booleans to the existing Blizzard-safe alpha setter. (Inherited from v58 RangePetToTAura.)
+- Target of Target: retain the explicit unit-target aura refresh, plus two experimental combat-only delayed refreshes at 0.12 and 0.40 seconds. These are not confirmed fixes in a live game client. (Inherited from v58/v59.)
+- Health: preserve a linear health color curve instead of step transitions; health-percent interpolation still uses the Blizzard curve path. (Inherited from v60.)
+
+METADATA / DOCUMENTATION
+- All five packaged TOC version fields, English/German main addon descriptions, auxiliary Forever metadata, build marker, patch notes, release notes, and the three active Aura debug prefixes now identify v61.
+- Existing libraries, SavedVariables, layouts, filter modules, combat aura renderer, Edit Mode code, and 'Thanks to ixlone' credit are not changed in this merge.
+
+KNOWN ISSUES / TESTING
+- Requires in-game testing; archive and static code validation are not gameplay confirmation.
+- Test Warlock Soul Shards (including partial Destruction shards, orientation and pooling); test ToT auras after ESC -> Tab in combat; test party/raid pets across range and zones; check smooth health gradient.
+- Existing Edit Mode taint, cross-zone aura/tooltip edge cases, native custom filters, Rogue weapon poisons, and protected power text limitations remain open.
+
+INSTALL
+- Outside combat, replace the entire existing PitBull4 folder with the folder from the ZIP. Keep your SavedVariables and /reload.
+- This is the Forever branch, not the separate Retail/Midnight or Classic Era build.
