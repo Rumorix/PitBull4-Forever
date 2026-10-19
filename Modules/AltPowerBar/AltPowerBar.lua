@@ -1,0 +1,83 @@
+
+local PitBull4 = _G.PitBull4
+local L = PitBull4.L
+
+local ALTERNATE_POWER_INDEX = _G.ALTERNATE_POWER_INDEX -- 10
+local EXAMPLE_VALUE = 0.6
+
+local PitBull4_AltPowerBar = PitBull4:NewModule("AltPowerBar")
+
+PitBull4_AltPowerBar:SetModuleType("secret_bar")
+PitBull4_AltPowerBar:SetName(L["Alternate power bar"])
+PitBull4_AltPowerBar:SetDescription(L["Show a bar for the alternate power bar as used in some quests and boss encounters."])
+PitBull4_AltPowerBar.allow_animations = true
+PitBull4_AltPowerBar:SetDefaults({
+	position = 3,
+})
+
+local get_curve do
+	local pool = {}
+	function get_curve(unit, min, max)
+		local curve = pool[unit]
+		if not pool[unit] then
+			curve = C_CurveUtil.CreateCurve()
+			curve:SetType(Enum.LuaCurveType.Linear)
+			pool[unit] = curve
+		end
+		curve:AddPoint(0, min or 0)
+		curve:AddPoint(1, max)
+		return curve
+	end
+end
+
+function PitBull4_AltPowerBar:OnEnable()
+	self:RegisterEvent("UNIT_POWER_BAR_SHOW")
+	self:RegisterEvent("UNIT_POWER_BAR_HIDE", "UNIT_POWER_BAR_SHOW")
+	self:RegisterEvent("PLAYER_ENTERING_WORLD", "UpdateAll")
+	self:RegisterEvent("UNIT_POWER_FREQUENT")
+	self:RegisterEvent("UNIT_MAXPOWER", "UNIT_POWER_FREQUENT")
+end
+
+function PitBull4_AltPowerBar:GetValue(frame)
+	local unit = frame.unit
+	local bar_info = GetUnitPowerBarInfo(unit)
+	if not bar_info then return end
+
+	local visible = false
+	if bar_info.barType then
+		if (unit == "player" or unit == "vehicle" or unit == "pet") or not bar_info.hideFromOthers then
+			visible = true
+		elseif bar_info.showOnRaid and UnitInAnyGroup(unit) then
+			visible = true
+		end
+	end
+	if not visible then return nil end
+
+	local max_power = UnitPowerMax(unit, ALTERNATE_POWER_INDEX)
+	if max_power == 0 then
+		return 0
+	end
+
+	return UnitPowerPercent(unit, ALTERNATE_POWER_INDEX, false, get_curve(unit, bar_info.minPower, max_power))
+end
+
+function PitBull4_AltPowerBar:GetExampleValue(frame)
+	return EXAMPLE_VALUE
+end
+
+function PitBull4_AltPowerBar:GetColor(frame, value)
+	return unpack(PitBull4.PowerColors.PB4_ALTERNATE)
+end
+PitBull4_AltPowerBar.GetExampleColor = PitBull4_AltPowerBar.GetColor
+
+function PitBull4_AltPowerBar:UNIT_POWER_BAR_SHOW(event, unit)
+	self:UpdateForUnitID(unit)
+end
+
+function PitBull4_AltPowerBar:UNIT_POWER_FREQUENT(event, unit, power_type)
+	if power_type ~= "ALTERNATE" then
+		return
+	end
+
+	self:UpdateForUnitID(unit)
+end

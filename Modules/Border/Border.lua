@@ -1,0 +1,487 @@
+
+local PitBull4 = _G.PitBull4
+local L = PitBull4.L
+
+local PitBull4_Border = PitBull4:NewModule("Border")
+
+PitBull4_Border:SetModuleType("custom")
+PitBull4_Border:SetName(L["Border"])
+PitBull4_Border:SetDescription(L["Show a highlight when hovering or targeting."])
+PitBull4_Border:SetDefaults({
+	normal_color = { 1, 1, 1, 1 },
+	normal_texture = "None",
+	boss_color = { 0.6, 0.3, 0.6, 1 },
+	boss_texture = "Blizzard Tooltip",
+	elite_color = { 1, 1, 0, 1 },
+	elite_texture = "Blizzard Tooltip",
+	rare_color = { 0.7, 0.7, 0.7, 1 },
+	rare_texture = "Blizzard Tooltip",
+	size = 16,
+	padding = 3,
+	color_by_class = false,
+	color_pvp_by_class = false,
+	hostility_color = false,
+	hostility_color_npcs = false,
+})
+
+local EXEMPT_UNITS = {
+	"targettarget",
+	"targettargettarget",
+}
+
+local HOSTILE_REACTION = 2
+local NEUTRAL_REACTION = 4
+local FRIENDLY_REACTION = 5
+
+local mouse_focus = nil
+
+local LibSharedMedia = LibStub("LibSharedMedia-3.0", true)
+
+function PitBull4_Border:OnEnable()
+	if not LibSharedMedia then
+		self:Disable()
+		error(L["PitBull4_Border requires the library LibSharedMedia-3.0 to be available."])
+	end
+	self:RegisterEvent("UNIT_CLASSIFICATION_CHANGED")
+end
+
+-- this is here to allow it to be overridden, by say an aggro module
+function PitBull4_Border:GetTextureAndColor(frame)
+	local unit = frame.unit
+	local classification = unit and PitBull4.Utils.BetterUnitClassification(unit)
+
+	if classification == "worldboss" then
+		classification = "boss"
+	elseif classification == "elite" then
+		classification = "elite"
+	elseif classification == "rare" or classification == "rareelite" then
+		classification = "rare"
+	else
+		classification = "normal"
+	end
+
+	local db = self:GetLayoutDB(frame)
+	local texture = db[classification .. "_texture"]
+	local color = db[classification .. "_color"]
+	local r, g, b = color[1], color[2], color[3]
+
+	-- Logic copied from BarModules
+	if classification == "normal" and unit and not PitBull4.Utils.IsUnitIdentitySecret(unit) then
+		if UnitIsPlayer(unit) or UnitInPartyIsAI(unit) then
+			if db.color_by_class and (db.color_pvp_by_class or UnitIsFriend("player", unit)) then
+				local _, class = PitBull4.Utils.GetSafeUnitClass(unit)
+				local t = PitBull4.ClassColors[class]
+				if t then
+					r, g, b = t[1], t[2], t[3]
+				end
+			elseif db.hostility_color then
+				if UnitCanAttack(unit, "player") then
+					-- they can attack me
+					if UnitCanAttack("player", unit) then
+						-- and I can attack them
+						r, g, b = unpack(PitBull4.ReactionColors[HOSTILE_REACTION])
+					else
+						-- but I can't attack them
+						r, g, b = unpack(PitBull4.ReactionColors.civilian)
+					end
+				elseif UnitCanAttack("player", unit) then
+					-- they can't attack me, but I can attack them
+					r, g, b = unpack(PitBull4.ReactionColors[NEUTRAL_REACTION])
+				elseif UnitIsFriend("player", unit) then
+					-- on my team
+					r, g, b = unpack(PitBull4.ReactionColors[FRIENDLY_REACTION])
+				else
+					-- either enemy or friend, no violence
+					r, g, b = unpack(PitBull4.ReactionColors.civilian)
+				end
+			end
+		elseif db.hostility_color_npcs then
+			local reaction = UnitReaction(unit, "player")
+			if reaction then
+				if reaction > FRIENDLY_REACTION then
+					r, g, b = unpack(PitBull4.ReactionColors[FRIENDLY_REACTION])
+				elseif reaction > HOSTILE_REACTION then
+					r, g, b = unpack(PitBull4.ReactionColors[reaction])
+				else
+					r, g, b = unpack(PitBull4.ReactionColors[HOSTILE_REACTION])
+				end
+			else
+				if UnitIsFriend("player", unit) then
+					r, g, b = unpack(PitBull4.ReactionColors[FRIENDLY_REACTION])
+				elseif UnitIsEnemy("player", unit) then
+					r, g, b = unpack(PitBull4.ReactionColors[HOSTILE_REACTION])
+				end
+			end
+		end
+	end
+
+	return texture, r, g, b, color[4]
+end
+
+function PitBull4_Border:UpdateFrame(frame)
+	if not LibSharedMedia then -- if updated before OnEnable
+		return self:ClearFrame(frame)
+	end
+
+	local texture, r, g, b, a = self:GetTextureAndColor(frame)
+
+	texture = LibSharedMedia:Fetch("border", texture)
+	if not texture then
+		return self:ClearFrame(frame)
+	end
+
+	local border = frame.Border
+	if not border then
+		local db = self:GetLayoutDB(frame)
+		local size = db.size
+		local padding = db.padding
+		border = PitBull4.Controls.MakeFrame(frame)
+		frame.Border = border
+		border:SetFrameLevel(frame:GetFrameLevel())
+		border:SetAllPoints(frame)
+
+		local tex = PitBull4.Controls.MakeTexture(border, "BORDER")
+		border[1] = tex
+		tex:SetWidth(size)
+		tex:SetHeight(size)
+		tex:SetPoint("TOPLEFT", border, "TOPLEFT", -padding, -size + padding)
+		tex:SetPoint("BOTTOMLEFT", border, "BOTTOMLEFT", -padding, size - padding)
+		tex:SetTexCoord(0, 0, 0, 1.948, 0.125, 0, 0.125, 1.948)
+		tex = PitBull4.Controls.MakeTexture(border, "BORDER")
+		border[2] = tex
+		tex:SetWidth(size)
+		tex:SetHeight(size)
+		tex:SetPoint("TOPRIGHT", border, "TOPRIGHT", padding, -size + padding)
+		tex:SetPoint("BOTTOMRIGHT", border, "BOTTOMRIGHT", padding, size - padding)
+		tex:SetTexCoord(0.125, 0, 0.125, 1.948, 0.25, 0, 0.25, 1.948)
+		tex = PitBull4.Controls.MakeTexture(border, "BORDER")
+		border[3] = tex
+		tex:SetWidth(size*8)
+		tex:SetHeight(size)
+		tex:SetPoint("TOPLEFT", border, "TOPLEFT", size - padding, padding)
+		tex:SetPoint("TOPRIGHT", border, "TOPRIGHT", -size + padding, padding)
+		tex:SetTexCoord(0.25, 9.2808, 0.375, 9.2808, 0.25, 0, 0.375, 0)
+		tex = PitBull4.Controls.MakeTexture(border, "BORDER")
+		border[4] = tex
+		tex:SetWidth(size*8)
+		tex:SetHeight(size)
+		tex:SetPoint("BOTTOMLEFT", border, "BOTTOMLEFT", size - padding, -padding)
+		tex:SetPoint("BOTTOMRIGHT", border, "BOTTOMRIGHT", -size + padding, -padding)
+		tex:SetTexCoord(0.375, 9.2808, 0.5, 9.2808, 0.375, 0, 0.5, 0)
+		tex = PitBull4.Controls.MakeTexture(border, "BORDER")
+		border[5] = tex
+		tex:SetWidth(size)
+		tex:SetHeight(size)
+		tex:SetPoint("TOPLEFT", border, "TOPLEFT", -padding, padding)
+		tex:SetTexCoord(0.5, 0, 0.5, 1, 0.625, 0, 0.625, 1)
+		tex = PitBull4.Controls.MakeTexture(border, "BORDER")
+		border[6] = tex
+		tex:SetWidth(size)
+		tex:SetHeight(size)
+		tex:SetPoint("TOPRIGHT", border, "TOPRIGHT", padding, padding)
+		tex:SetTexCoord(0.625, 0, 0.625, 1, 0.75, 0, 0.75, 1)
+		tex = PitBull4.Controls.MakeTexture(border, "BORDER")
+		border[7] = tex
+		tex:SetWidth(size)
+		tex:SetHeight(size)
+		tex:SetPoint("BOTTOMLEFT", border, "BOTTOMLEFT", -padding, -padding)
+		tex:SetTexCoord(0.75, 0, 0.75, 1, 0.875, 0, 0.875, 1)
+		tex = PitBull4.Controls.MakeTexture(border, "BORDER")
+		border[8] = tex
+		tex:SetWidth(size)
+		tex:SetHeight(size)
+		tex:SetPoint("BOTTOMRIGHT", border, "BOTTOMRIGHT", padding, -padding)
+		tex:SetTexCoord(0.875, 0, 0.875, 1, 1, 0, 1, 1)
+	end
+
+	for _, tex in ipairs(border) do
+		tex:SetTexture(texture)
+		tex:SetVertexColor(r, g, b, a)
+	end
+
+	border:Show()
+
+	return false
+end
+
+function PitBull4_Border:ClearFrame(frame)
+	local border = frame.Border
+	if not border then
+		return false
+	end
+
+	for i, tex in ipairs(border) do
+		border[i] = tex:Delete()
+	end
+	frame.Border = border:Delete()
+
+	return false
+end
+
+function PitBull4_Border:UNIT_CLASSIFICATION_CHANGED(event, unit)
+	self:UpdateForUnitID(unit)
+end
+
+function PitBull4_Border:OnHide(frame)
+	local border = frame.Border
+	if border then
+		border:Hide()
+	end
+end
+
+function PitBull4_Border:OnEnter(frame)
+	mouse_focus = frame
+	if not frame.Border then
+		return
+	end
+	if not self:ShouldShow(frame) then
+		frame.Border:Hide()
+		return
+	end
+	frame.Border:Show()
+end
+
+function PitBull4_Border:OnLeave(frame)
+	mouse_focus = nil
+	if not frame.Border then
+		return
+	end
+	if not self:ShouldShow(frame) then
+		frame.Border:Hide()
+	end
+end
+
+function PitBull4_Border:ShouldShow(frame)
+	local db = self:GetLayoutDB(frame)
+
+	if mouse_focus == frame and db.while_hover then
+		return true
+	end
+
+	if not UnitExists("target") or not UnitIsUnit(frame.unit, "target") or EXEMPT_UNITS[frame.unit] then
+		return false
+	end
+
+	if not db.show_target then
+		return false
+	end
+
+	return true
+end
+
+function PitBull4_Border:PLAYER_TARGET_CHANGED()
+	mouse_focus = GetMouseFocus()
+
+	for frame in PitBull4:IterateFrames() do
+		if frame.Border then
+			if self:ShouldShow(frame) then
+				frame.Border:Show()
+			else
+				frame.Border:Hide()
+			end
+		end
+	end
+end
+
+function PitBull4_Border:LibSharedMedia_Registered(event, mediatype, key)
+	if mediatype == "border" then
+		self:UpdateAll()
+	end
+end
+
+PitBull4_Border:SetLayoutOptionsFunction(function(self)
+	local function update()
+		for frame in PitBull4:IterateFramesForLayout(PitBull4.Options.GetCurrentLayout()) do
+			self:UpdateFrame(frame)
+		end
+	end
+
+	local function clear_and_update()
+		for frame in PitBull4:IterateFramesForLayout(PitBull4.Options.GetCurrentLayout()) do
+			self:ClearFrame(frame)
+			self:UpdateFrame(frame)
+		end
+	end
+
+	local function get(info)
+		return PitBull4.Options.GetLayoutDB(self)[info[#info]]
+	end
+	local function set(info, value)
+		PitBull4.Options.GetLayoutDB(self)[info[#info]] = value
+		update()
+	end
+
+	local function get_color(info)
+		return unpack(PitBull4.Options.GetLayoutDB(self)[info[#info]])
+	end
+	local function set_color(info, r, g, b, a)
+		local color = PitBull4.Options.GetLayoutDB(self)[info[#info]]
+		color[1], color[2], color[3], color[4] = r, g, b, a
+		update()
+	end
+	return 'size', {
+		type = 'range',
+		name = L["Size"],
+		desc = L["How large the border should be."],
+		get = get,
+		set = function(info, value)
+			PitBull4.Options.GetLayoutDB(self).size = value
+			clear_and_update()
+		end,
+		softMin = 4,
+		softMax = 30,
+		step = 1,
+	}, 'padding', {
+		type = 'range',
+		name = L["Padding"],
+		desc = L["How far the border should be from the frame."],
+		get = get,
+		set = function(info, value)
+			PitBull4.Options.GetLayoutDB(self).padding = value
+			clear_and_update()
+		end,
+		min = -10,
+		max = 10,
+		step = 1,
+	}, 'normal', {
+		type = 'group',
+		inline = true,
+		name = L["Normal"],
+		args = {
+			normal_color = {
+				type = 'color',
+				name = L["Color"],
+				desc = L["What color should be applied to the border if it is a normal unit."],
+				hasAlpha = true,
+				get = get_color,
+				set = set_color,
+			},
+			normal_texture = {
+				type = 'select',
+				name = L["Texture"],
+				desc = L["What texture should be applied to the border if it is a normal unit."],
+				get = get,
+				set = set,
+				values = function(info)
+					return LibSharedMedia:HashTable("border")
+				end,
+				hidden = function(info)
+					return not LibSharedMedia
+				end,
+			},
+			color_by_class = {
+				type = 'toggle',
+				name = L["Color by class"],
+				-- desc = L["Color the bar by unit class"],
+				order = -60,
+				get = get,
+				set = set,
+			},
+			color_pvp_by_class = {
+				type = 'toggle',
+				name = L["Color PvP by class"],
+				-- desc = L["Color the bar for PvP enemies by unit class."],
+				order = -59,
+				get = get,
+				set = set,
+			},
+			hostility_color = {
+				type = 'toggle',
+				name = L["Color by hostility"],
+				-- desc = L["Color the bar by hostility for player characters.  Note that color by class takes precedence over this."],
+				order = -58,
+				get = get,
+				set = set,
+			},
+			hostility_color_npcs = {
+				type = 'toggle',
+				name = L["Color NPCs by hostility"],
+				-- desc = L["Color the bar by hostility for NPCs."],
+				order = -57,
+				get = get,
+				set = set,
+			}
+		}
+	}, 'elite', {
+		type = 'group',
+		inline = true,
+		name = L["Elite"],
+		args = {
+			elite_color = {
+				type = 'color',
+				name = L["Color"],
+				desc = L["What color should be applied to the border if it is an elite unit."],
+				hasAlpha = true,
+				get = get_color,
+				set = set_color,
+			},
+			elite_texture = {
+				type = 'select',
+				name = L["Texture"],
+				desc = L["What texture should be applied to the border if it is an elite unit."],
+				get = get,
+				set = set,
+				values = function(info)
+					return LibSharedMedia:HashTable("border")
+				end,
+				hidden = function(info)
+					return not LibSharedMedia
+				end,
+			}
+		}
+	}, 'rare', {
+		type = 'group',
+		inline = true,
+		name = L["Rare"],
+		args = {
+			rare_color = {
+				type = 'color',
+				name = L["Color"],
+				desc = L["What color should be applied to the border if it is a rare unit."],
+				hasAlpha = true,
+				get = get_color,
+				set = set_color,
+			},
+			rare_texture = {
+				type = 'select',
+				name = L["Texture"],
+				desc = L["What texture should be applied to the border if it is a rare unit."],
+				get = get,
+				set = set,
+				values = function(info)
+					return LibSharedMedia:HashTable("border")
+				end,
+				hidden = function(info)
+					return not LibSharedMedia
+				end,
+			}
+		}
+	}, 'boss', {
+		type = 'group',
+		inline = true,
+		name = L["Boss"],
+		args = {
+			boss_color = {
+				type = 'color',
+				name = L["Color"],
+				desc = L["What color should be applied to the border if it is a boss unit."],
+				hasAlpha = true,
+				get = get_color,
+				set = set_color,
+			},
+			boss_texture = {
+				type = 'select',
+				name = L["Texture"],
+				desc = L["What texture should be applied to the border if it is a boss unit."],
+				get = get,
+				set = set,
+				values = function(info)
+					return LibSharedMedia:HashTable("border")
+				end,
+				hidden = function(info)
+					return not LibSharedMedia
+				end,
+			}
+		}
+	}
+end)
