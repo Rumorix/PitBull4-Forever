@@ -1,0 +1,67 @@
+name: Bug report
+description: Report an issue with the PitBull4 Forever fork
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: "Please remove any private account data, credentials, or character identifiers from attached logs."
+  - type: input
+    id: addon-version
+    attributes:
+      label: PitBull4 Forever build
+      description: Exact version from the in-game AddOns list or build marker
+      placeholder: "PitBull4-Lorenzo-Forever-061-MergedFixes"
+    validations:
+      required: true
+  - type: input
+    id: wow-version
+    attributes:
+      label: WoW client version and build
+      placeholder: "12.1.5 (build ... )"
+    validations:
+      required: true
+  - type: input
+    id: class-spec
+    attributes:
+      label: Class / specialization
+      placeholder: "Priest / Shadow"
+    validations:
+      required: false
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: "1. ...\n2. ...\n3. ..."
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: errors
+    attributes:
+      label: Lua errors / logs / screenshots
+      description: Paste relevant BugGrabber or BugSack logs, and drag screenshots into the issue if needed.
+      render: text
+    validations:
+      required: false
+  - type: dropdown
+    id: combat
+    attributes:
+      label: When does it happen?
+      options:
+        - Out of combat
+        - In combat
+        - Both / not sure
+    validations:
+      required: true
