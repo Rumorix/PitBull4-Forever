@@ -701,8 +701,9 @@ function PitBull4.Options.get_layout_editor_indicator_options()
 			UpdateFrames()
 		end,
 		values = function(info)
-			return LibSharedMedia:HashTable("font")
+			return PitBull4.Options.GetMediaValues("font")
 		end,
+		itemControl = "PitBull4-Item-Font",
 		disabled = disabled,
 		hidden = function(info)
 			local module = PitBull4.modules[info[#info-1]]

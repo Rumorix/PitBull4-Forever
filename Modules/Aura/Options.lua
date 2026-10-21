@@ -1475,8 +1475,9 @@ PitBull4_Aura:SetLayoutOptionsFunction(function(self)
 					PitBull4.Options.UpdateFrames()
 				end,
 				values = function(info)
-					return LibSharedMedia:HashTable("font")
+					return PitBull4.Options.GetMediaValues("font")
 				end,
+				itemControl = "PitBull4-Item-Font",
 				hidden = function(info)
 					return not LibSharedMedia
 				end,
