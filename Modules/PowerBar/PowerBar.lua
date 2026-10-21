@@ -149,16 +149,13 @@ function PitBull4_PowerBar:UpdateFrame(frame)
 
 	local fill = control.GetStatusBarTexture and control:GetStatusBarTexture()
 	if frame._pb4_no_resource_power_anchor then
+		-- Vertex alpha only: the next normal update restores it with the
+		-- configured "Full opacity". Texture:SetAlpha would clobber that value.
 		if fill then
 			pcall(fill.SetVertexColor, fill, 1, 1, 1, 0)
-			if fill.SetAlpha then
-				pcall(fill.SetAlpha, fill, 0)
-			end
 		end
 		control:SetBackgroundColor(NO_RESOURCE_BG_R, NO_RESOURCE_BG_G, NO_RESOURCE_BG_B, NO_RESOURCE_BG_A)
 		control:Show()
-	elseif fill and fill.SetAlpha then
-		pcall(fill.SetAlpha, fill, 1)
 	end
 	return changed
 end
