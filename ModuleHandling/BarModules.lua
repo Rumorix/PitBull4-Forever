@@ -614,7 +614,7 @@ function BarProviderModule:UpdateFrame(frame)
 
 			local r, g, b, a = call_color_function(self, frame, bar_db, value, extra or 0, icon)
 			bar:SetColor(r, g, b)
-			bar:SetAlpha(a)
+			bar:SetNormalAlpha(a)
 
 			r, g, b, a = call_background_color_function(self, frame, bar_db, value, extra or 0, icon)
 			bar:SetBackgroundColor(r, g, b)
