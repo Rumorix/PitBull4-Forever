@@ -2,6 +2,7 @@
 ..\FrameXML\UI.xsd">
 
 <Script file="Options.lua"/>
+<Script file="MediaDropdownItems.lua"/>
 <Script file="General.lua"/>
 <Script file="ConfigMode.lua"/>
 <Script file="LayoutEditor.lua"/>

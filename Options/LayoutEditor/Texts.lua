@@ -183,8 +183,9 @@ function PitBull4.Options.get_layout_editor_text_options()
 			UpdateFrames()
 		end,
 		values = function(info)
-			return LibSharedMedia:HashTable("font")
+			return PitBull4.Options.GetMediaValues("font")
 		end,
+		itemControl = "PitBull4-Item-Font",
 		hidden = function(info)
 			return not LibSharedMedia
 		end,
@@ -638,8 +639,9 @@ function PitBull4.Options.get_layout_editor_text_options()
 			UpdateFrames()
 		end,
 		values = function(info)
-			return LibSharedMedia:HashTable("font")
+			return PitBull4.Options.GetMediaValues("font")
 		end,
+		itemControl = "PitBull4-Item-Font",
 		disabled = disabled,
 		hidden = function(info)
 			return not LibSharedMedia

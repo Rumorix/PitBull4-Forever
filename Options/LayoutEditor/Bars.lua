@@ -57,8 +57,9 @@ function PitBull4.Options.get_layout_editor_bar_options()
 			UpdateFrames()
 		end,
 		values = function(info)
-			return LibSharedMedia:HashTable("statusbar")
+			return PitBull4.Options.GetMediaValues("statusbar")
 		end,
+		itemControl = "PitBull4-Item-Statusbar",
 		hidden = function(info)
 			return not LibSharedMedia
 		end,
@@ -366,8 +367,9 @@ function PitBull4.Options.get_layout_editor_bar_options()
 			UpdateFrames()
 		end,
 		values = function(info)
-			return LibSharedMedia:HashTable("statusbar")
+			return PitBull4.Options.GetMediaValues("statusbar")
 		end,
+		itemControl = "PitBull4-Item-Statusbar",
 		disabled = disabled,
 		hidden = function(info)
 			return not LibSharedMedia
