@@ -1672,6 +1672,33 @@ local function set_safe_stock_power_text(font_string, unit, power_type, mode)
 	return true
 end
 
+local provided_code_set
+
+--- Whether code is one of the stock scripts (after the same legacy
+-- normalization update_text applies). Used by Options/Share.lua to warn about
+-- custom Lua in imported profiles; empty code counts as stock.
+function PitBull4_LuaTexts:IsProvidedCode(code)
+	if code == nil or code == "" then
+		return true
+	end
+	if type(code) ~= "string" then
+		return false
+	end
+	if not provided_code_set then
+		provided_code_set = {}
+		for _, codes in next, PROVIDED_CODES do
+			for _, entry in next, codes do
+				provided_code_set[entry.code] = true
+			end
+		end
+	end
+	code = normalize_legacy_class_code(code)
+	code = normalize_legacy_health_percent_code(code)
+	code = normalize_legacy_power_code(code)
+	code = normalize_legacy_pvp_timer_code(code)
+	return provided_code_set[code] == true
+end
+
 local function update_text(font_string, event)
 	if not texts[font_string] then return end
 	if no_update[font_string] then return end
