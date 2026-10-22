@@ -116,8 +116,8 @@ local function harness()
 	end
 	function aura:CancelTimer(timer) timer.cancelled = true end
 	function aura:GetLayoutDB(frame) return frame.db end
-	function aura:UpdateAuras() self.legacy_updates = self.legacy_updates + 1 end
-	function aura:ClearAuras() self.legacy_clears = self.legacy_clears + 1 end
+	function aura:UpdateAuras() mutate("LegacyUpdate"); self.legacy_updates = self.legacy_updates + 1 end
+	function aura:ClearAuras() mutate("LegacyClear"); self.legacy_clears = self.legacy_clears + 1 end
 	function aura:Update(frame)
 		if not frame.db.enabled or not frame.unit or not env.UnitExists(frame.unit) then
 			self:ClearFrame(frame)
@@ -311,6 +311,74 @@ function tests.config_preview_and_buff_toggle_are_preserved()
 	assert(h.containers[1].groups.pitbull_own.filter == "HELPFUL|PLAYER")
 	assert(h.containers[1].groups.pitbull_other.filter == "HELPFUL|!PLAYER")
 	assert(h.containers[2].groups.pitbull_own.max == 10)
+end
+
+local function legacy_control(h, protected, forbidden)
+	local c = { shown = true }
+	function c:IsForbidden() return forbidden end
+	function c:IsProtected() assert(not forbidden); return protected end
+	function c:IsShown() return self.shown end
+	function c:Hide() assert(not protected and not forbidden); self.shown = false end
+	function c:Show() assert(not h.combat); self.shown = true end
+	return c
+end
+
+function tests.mixed_unit_aura_refreshes_native_and_suspends_failed_fallback()
+	local h = harness(); local native, fallback = h:new_frame(), h:new_frame()
+	h.aura:Update(native)
+	h.fail_method = "AddAuraGroup"; h.fail_always = true; h.aura:Update(fallback)
+	assert(h.aura:Lorenzo121NativeOwnsFrame(native))
+	assert(not h.aura:Lorenzo121NativeOwnsFrame(fallback))
+	assert(not h.aura:Lorenzo121NativeHandlesUnitAura(native.unit))
+	local c = legacy_control(h, false); fallback.aura_buffs = { c }
+	local updates = h.aura.legacy_updates
+	h.combat = true; h.aura:UNIT_AURA("UNIT_AURA", native.unit)
+	assert(h.containers[1].refreshes == 1 and h.containers[2].refreshes == 1)
+	assert(not c.shown and h.aura.legacy_updates == updates and h.violations == 0)
+	h:regen(); assert(c.shown and h.aura.legacy_updates > updates)
+end
+
+function tests.failed_initialization_clear_and_return_are_reconciled()
+	local h = harness(); local f = h:new_frame()
+	h.fail_method = "AddAuraGroup"; h.fail_always = true; h.aura:Update(f)
+	local c = legacy_control(h, false); f.aura_debuffs = { c }
+	h.combat = true; h.absent = f.unit; h.aura:Update(f)
+	assert(not c.shown)
+	h.absent = nil; h.aura:UNIT_AURA("UNIT_AURA", f.unit)
+	assert(not c.shown and h.violations == 0)
+	h:regen(); assert(c.shown)
+end
+
+function tests.fallback_onhide_defers_pool_cleanup_even_without_native_mode()
+	local h = harness(); local f = h:new_frame()
+	h.aura:Lorenzo121SetNativeEnabled(false)
+	local c = legacy_control(h, false); f.aura_buffs = { c }
+	local clears = h.aura.legacy_clears
+	h.combat = true; f.shown = false; h.aura:OnHide(f)
+	assert(not c.shown and h.aura.legacy_clears == clears)
+	h:regen(); assert(h.aura.legacy_clears == clears + 1 and h.violations == 0)
+end
+
+function tests.protected_and_forbidden_fallback_controls_are_never_mutated()
+	local h = harness(); local f = h:new_frame(); f.force_show = true
+	local protected = legacy_control(h, true)
+	local forbidden = legacy_control(h, false, true)
+	f.aura_buffs = { protected, forbidden }; f.aura_highlight = protected
+	h.combat = true; h.aura:UpdateFrame(f); h.aura:OnHide(f)
+	assert(protected.shown and forbidden.shown and h.violations == 0)
+end
+
+function tests.native_combat_unit_aura_is_independent_of_other_frame_failure()
+	local h = harness(); local f, other = h:new_frame(), h:new_frame("focus")
+	h.aura:Update(f); h.fail_method = "AddAuraGroup"; h.aura:Update(other)
+	assert(h.aura:Lorenzo121NativeHandlesUnitAura(f.unit))
+	h.aura.LorenzoPatch105ShouldThrottleRaidUnitAura = function() return true end
+	h.combat = true; h.aura:UNIT_AURA("UNIT_AURA", f.unit)
+	assert(h.containers[1].refreshes == 1 and h.containers[2].refreshes == 1)
+	h.absent = f.unit; h.aura:Update(f); h.absent = nil
+	h.aura:UNIT_AURA("UNIT_AURA", f.unit)
+	assert(h.containers[1].refreshes == 2 and h.violations == 0)
+	h:assert_armed(f)
 end
 
 local names = {}

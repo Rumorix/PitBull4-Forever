@@ -27,6 +27,7 @@ local native_frames = setmetatable({}, { __mode = "k" })
 local retired_states = setmetatable({}, { __mode = "k" })
 local failed_frames = setmetatable({}, { __mode = "k" })
 local pending_frames = setmetatable({}, { __mode = "k" })
+local hidden_legacy = setmetatable({}, { __mode = "k" })
 local retry_states = setmetatable({}, { __mode = "k" })
 -- One initial attempt plus three automatic retries. Routine UNIT_AURA/world/
 -- regen updates must not reset this budget for an incompatible native surface.
@@ -1398,8 +1399,21 @@ function PitBull4_Aura:Lorenzo121HasNativeFailures()
 	return next(failed_frames) ~= nil
 end
 
-function PitBull4_Aura:Lorenzo121NativeHandlesUnitAura(_unit)
-	return self:Lorenzo121NativeRendererActive() and not self:Lorenzo121HasNativeFailures()
+function PitBull4_Aura:Lorenzo121NativeOwnsFrame(frame)
+	local state = native_frames[frame]
+	return state ~= nil and not frame.force_show and not failed_frames[frame]
+		and state.unit == frame.unit and self:Lorenzo121NativeRendererActive()
+end
+
+function PitBull4_Aura:Lorenzo121NativeHandlesUnitAura(unit)
+	local found = false
+	for frame in PitBull4:IterateFrames() do
+		if frame.unit == unit then
+			found = true
+			if not self:Lorenzo121NativeOwnsFrame(frame) then return false end
+		end
+	end
+	return found
 end
 
 function PitBull4_Aura:Lorenzo121ShouldRunLegacyAuraTicker()
@@ -1601,13 +1615,47 @@ end
 local legacy_update_frame = PitBull4_Aura.UpdateFrame
 local legacy_clear_frame = PitBull4_Aura.ClearFrame
 
+-- Never run the legacy allocator/layout/pool teardown during lockdown.
+-- Hide only controls explicitly reported unprotected; protected/forbidden
+-- surfaces remain owned by their secure parent until post-combat reconciliation.
+local function suspend_legacy(frame)
+	local hidden = hidden_legacy[frame] or {}
+	hidden_legacy[frame] = hidden
+	local function suspend(control)
+		if control and (not control.IsForbidden or not control:IsForbidden())
+			and control.IsProtected and not control:IsProtected() then
+			if control:IsShown() then
+				control:Hide()
+				hidden[control] = true
+			end
+		end
+	end
+	for _, controls in pairs({ frame.aura_buffs or {}, frame.aura_debuffs or {} }) do
+		for _, control in ipairs(controls) do suspend(control) end
+	end
+	suspend(frame.aura_highlight)
+end
+
+local function restore_legacy(frame)
+	local hidden = hidden_legacy[frame]
+	if not hidden then return end
+	hidden_legacy[frame] = nil
+	for control in pairs(hidden) do control:Show() end
+end
+
 function PitBull4_Aura:UpdateFrame(frame, ...)
-	if in_combat_lockdown() and native_enabled and self:Lorenzo121NativeRendererAvailable() then
-		-- Never construct/reconfigure native surfaces or create/delete pooled
-		-- fallback buttons during lockdown. Blizzard owns live aura processing.
+	if in_combat_lockdown() then
 		pending_frames[frame] = true
+		if self:Lorenzo121NativeOwnsFrame(frame) then
+			local state = native_frames[frame]
+			refresh_dynamic_group(state.groups.buff)
+			refresh_dynamic_group(state.groups.debuff)
+		else
+			suspend_legacy(frame)
+		end
 		return
 	end
+	restore_legacy(frame)
 	if frame and frame.force_show then
 		-- Config Mode intentionally uses the legacy sample-aura renderer. Hide the
 		-- persistent native containers while those samples are visible so the user
@@ -1642,9 +1690,11 @@ end
 
 function PitBull4_Aura:ClearFrame(frame, ...)
 	self:Lorenzo121ClearNativeFrame(frame)
-	if in_combat_lockdown() and native_enabled and self:Lorenzo121NativeRendererAvailable() then
+	if in_combat_lockdown() then
+		suspend_legacy(frame)
 		return
 	end
+	hidden_legacy[frame] = nil
 	return legacy_clear_frame(self, frame, ...)
 end
 

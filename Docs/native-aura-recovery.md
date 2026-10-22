@@ -15,6 +15,10 @@ are unchanged.
   of permanently excluding the frame after its first error.
 - Bound persistent failures, clean up partially constructed native surfaces,
   cancel retries on module disable and expose retry state in native diagnostics.
+- Track native ownership per frame, independently of global API availability;
+  continue combat-safe native refreshes when other frames use legacy fallback.
+- Suspend unprotected legacy fallback controls during combat and reconcile
+  current visibility and pooled cleanup after combat, including `OnHide`.
 - Add isolated Lua 5.1 regression coverage. No version or SavedVariables migration.
 
 ## Recovery contract
@@ -104,3 +108,30 @@ execution, forbidden object partitions or secret-value enforcement.
 Capture the exact client/build, affected unit, native status output, Lua errors
 and taint/blocked-action logs. Passing the automated suite does not establish
 in-game combat correctness or certify the change for release.
+
+## PR #2 review follow-up
+
+Global native availability no longer decides whether a particular frame is native.
+Only a configured state for the current unit token, without a recorded failure or
+Config Mode override, owns that frame. `UNIT_AURA` routes combat-safe native
+refreshes independently of fallback failures and legacy raid throttling.
+
+Legacy rebuilds, layout, allocation and pooled deletion remain deferred throughout
+combat, including with native mode disabled. Existing unprotected fallback icons
+and highlights are hidden without deleting or reparenting them. Protection and
+forbidden-object checks precede visibility mutations. Protected or forbidden
+fallback controls are left to their secure parent during combat: if that parent
+stays visible, their old visuals may persist until combat ends. No insecure fix can
+promise immediate protected cleanup. After combat, current visible frames rebuild;
+hidden frames receive cleanup even though normal frame iteration excludes them.
+A returned unit is updated instead of replaying its earlier clear.
+
+The Lua 5.1 suite now contains 17 cases, including mixed renderers for the same
+unit, failed initialization, combat `UNIT_AURA`, transient disappearance, fallback
+`OnHide`, disabled native mode, and protected/forbidden controls.
+
+Additional in-game checklist: reproduce a native failure on one frame alongside a
+healthy native frame, apply/remove auras during combat, and verify the healthy
+frame stays live. Confirm unprotected fallback visuals suspend and recover after
+combat, hidden fallback controls are cleaned up, and protected fallback controls
+produce no blocked-action/taint errors. Test raid performance mode as well.
