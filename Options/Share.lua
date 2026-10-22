@@ -20,6 +20,7 @@ L["Some things to keep in mind:\n- Fonts and textures are not included and may g
 -- popup
 L["Are you sure you want to import the following layouts into the current profile?\n\n%s"]
 L["Enter a new profile name:"]
+L["A profile named \"%s\" already exists.\n\nOverwrite it with the imported profile? This cannot be undone."]
 L["Copy (Ctrl-C) this to the clipboard."]
 
 -- processing
@@ -29,6 +30,7 @@ L["Skipped settings for the following disabled or unavailable modules: %s"]
 L["Import data is corrupt."]
 L["Import data is from an incompatible version."]
 L["Missing profile name."]
+L["%q is the active profile and can't be overwritten. Choose another name, or switch to a different profile first."]
 L["Layout %q is corrupt, skipping."]
 L["No layouts found."]
 L["Unknown import type."]
@@ -88,6 +90,15 @@ local function suggestLayoutName(name)
 	return name
 end
 
+-- Iterate like checkLayoutExists instead of indexing the AceDB table directly.
+local function checkProfileExists(name)
+	for key in next, PitBull4.db.profiles do
+		if name == key then
+			return true
+		end
+	end
+end
+
 
 StaticPopupDialogs["PB4ShareConfigImportLayoutsConfirmDialog"] = {
 	text = L["Are you sure you want to import the following layouts into the current profile?\n\n%s"],
@@ -117,18 +128,55 @@ StaticPopupDialogs["PB4ShareConfigImportProfileConfirmDialog"] = {
 	maxLetters = 64,
 	editBoxWidth = 150,
 	OnAccept = function(self)
-		local profile_name = self.editBox:GetText()
-		if profile_name and profile_name ~= "" then
+		-- GameDialog exposes the edit box as GetEditBox()/EditBox; older
+		-- StaticPopup frames used the editBox field.
+		local edit_box = self.GetEditBox and self:GetEditBox() or self.editBox
+		local profile_name = edit_box and edit_box:GetText()
+		if not profile_name or profile_name == "" then
+			return
+		end
+		if profile_name == PitBull4.db:GetCurrentProfile() then
+			-- AceDB keeps using the old table for the active profile, so
+			-- replacing it would leave live and saved settings out of sync.
+			Error(L["%q is the active profile and can't be overwritten. Choose another name, or switch to a different profile first."]:format(profile_name))
+		elseif checkProfileExists(profile_name) then
+			StaticPopup_Show("PB4ShareConfigImportProfileOverwriteDialog", profile_name, nil, {
+				imported = self.data,
+				name = profile_name,
+			})
+		else
 			DoImportPhase2Profile(self.data, profile_name)
 		end
 	end,
 	EditBoxOnEnterPressed = function(self)
-		local dialog = self:GetParent()
-		dialog:OnAccept()
-		dialog:Hide()
+		-- Same path as clicking the accept button: runs OnAccept, then hides.
+		StaticPopup_OnClick(self:GetParent(), 1)
 	end,
 	EditBoxOnEscapePressed = function(self)
 		self:GetParent():Hide()
+	end,
+	OnShow = function(self)
+		-- Get above the PB4 config window
+		self:SetFrameStrata("FULLSCREEN_DIALOG")
+		self:SetFrameLevel(self:GetFrameLevel() + 2)
+	end,
+	OnHide = function(self)
+		self:SetFrameStrata("DIALOG")
+	end,
+	timeout = 0,
+	whileDead = 1,
+	hideOnEscape = 1,
+	preferredIndex = 4,
+}
+
+StaticPopupDialogs["PB4ShareConfigImportProfileOverwriteDialog"] = {
+	text = L["A profile named \"%s\" already exists.\n\nOverwrite it with the imported profile? This cannot be undone."],
+	button1 = _G.OKAY,
+	button2 = _G.CANCEL,
+	hasEditBox = false,
+	showAlert = true,
+	OnAccept = function(self)
+		DoImportPhase2Profile(self.data.imported, self.data.name)
 	end,
 	OnShow = function(self)
 		-- Get above the PB4 config window

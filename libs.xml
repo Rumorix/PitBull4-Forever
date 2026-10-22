@@ -48,4 +48,8 @@
 <Script file="Libs\LibDataBroker-1.1\LibDataBroker-1.1.lua"/>
 <Script file="Libs\LibUnitEvent-1.0\LibUnitEvent-1.0.lua"/>
 
+<!-- Profile import/export (Options\Share.lua) -->
+<Script file="Libs\LibSerialize\LibSerialize.lua"/>
+<Script file="Libs\LibDeflate\LibDeflate.lua"/>
+
 </Ui>
