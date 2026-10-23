@@ -1,4 +1,5 @@
-PitBull4-Lorenzo-Forever-061-MergedFixes
-Base: PitBull4-Lorenzo-Forever-060-HealthGradient.
-Additional merged code: two SoulShards Lua modules from PitBull4-Lorenzo-Forever-058-SoulShardsCompatibility (sibling v58 branch).
-Inherits v58 RangePetToTAura, v59 ToTAuraCombatRetry and v60 HealthGradient.
+PitBull4-Lorenzo-Forever-063
+Stable metadata alignment for Forever v063.
+Previous official Stable: v062 (source commit 9894698e1f80a69bb33758875fc433ba4f1d5436).
+Functionality is unchanged from v062. This update corrects in-game and source-controlled version labels.
+Previously merged changes included in v062 and v063: PRs #33, #34, #35 and #36.

@@ -1,3 +1,26 @@
+PitBull4 Forever v063 — Stable Version Alignment
+Build: PitBull4-Lorenzo-Forever-063
+Date: 2026-10-23
+
+RELEASE SCOPE
+- Version and documentation update to align the in-game addon metadata with the official GitHub Stable release.
+- No new runtime changes compared with Forever v062; the four PRs listed below were already included in that release.
+- Source base: v062 at commit 9894698e1f80a69bb33758875fc433ba4f1d5436.
+
+CHANGES ALREADY INCLUDED IN v062 (RETAINED IN v063)
+- PR #33: Make Full and Empty opacity work independently on all bars.
+- PR #34: Add previews for statusbar textures and fonts in option dropdowns.
+- PR #35: Fix sharing/import safety.
+- PR #36: Restore profile import/export, bundling LibSerialize and LibDeflate.
+
+VERIFICATION AND INSTALLATION
+- Stable publication still requires a full packaged AddOn ZIP, embedded dependencies, Lua 5.1 compilation, and load-graph integrity checks.
+- No new behavior is introduced by this version bump; gameplay regressions may still be reported.
+- Back up AddOns/WTF before updating; replace the full PitBull4 addon folder outside combat.
+
+----
+Historical Forever v061 release notes follow.
+
 PitBull4 Lorenzo Forever v61 - Merged Fixes
 Build: PitBull4-Lorenzo-Forever-061-MergedFixes
 Date: 2026-10-19

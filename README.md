@@ -2,7 +2,9 @@
 
 Community-maintained **PitBull4 Forever** fork for World of Warcraft.
 
-**Current imported build:** `PitBull4-Lorenzo-Forever-061-MergedFixes` (2026-10-19)
+**Current source version:** `PitBull4-Lorenzo-Forever-063` (2026-10-23)
+
+**Official Stable download:** [GitHub Releases](https://github.com/Rumorix/PitBull4-Forever/releases/latest)
 
 **Repository:** https://github.com/Rumorix/PitBull4-Forever
 
@@ -10,10 +12,12 @@ Community-maintained **PitBull4 Forever** fork for World of Warcraft.
 
 This repository tracks the **Forever** codebase separately from the maintainer's **Retail/Midnight** and **Classic Era** forks. It includes the Lua source, XML definitions, assets, and bundled libraries needed by the provided addon archive.
 
-### Changes in this imported build
+### Changes in the current Stable codebase
 
 - Consolidates the Forever v58-v60 changes (pet-range handling, ToT aura refresh attempts, health gradient).
 - Merges Soul Shards compatibility work from a separate v58 branch.
+- Includes PR #33 (independent Full/Empty opacity), #34 (media previews), #35 (sharing/import safety) and #36 (profile import/export with LibSerialize and LibDeflate).
+- The v063 source change aligns version metadata with the already published v062 functionality; no runtime behavior change.
 - Does **not** claim that all combat-specific behavior has been verified in-game.
 
 For the detailed build-specific changes, see [`LORENZO_RELEASE_NOTES.txt`](LORENZO_RELEASE_NOTES.txt) and [`LORENZO_BUILD_VERSION.txt`](LORENZO_BUILD_VERSION.txt).
@@ -33,7 +37,7 @@ Avoid including character/account identifiers, access tokens, or other private i
 
 The WoW addon folder should be named `PitBull4` and contain `PitBull4_Mainline.toc` directly inside it. For a local working checkout named `PitBull4-Forever`, copy the checked-out repository *contents* into `Interface/AddOns/PitBull4/`; do not rename the actual game-addon folder to `PitBull4-Forever`.
 
-**Do not use the GitHub source ZIP as a guaranteed release package.** A release workflow will be designed separately and reviewed before being enabled.
+**Do not use the GitHub source ZIP as a guaranteed release package.** Install the complete ZIP attached to the latest official GitHub Release.
 
 ## Provenance and licensing
 
