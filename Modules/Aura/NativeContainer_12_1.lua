@@ -26,6 +26,19 @@ local native_enabled = true
 local native_frames = setmetatable({}, { __mode = "k" })
 local retired_states = setmetatable({}, { __mode = "k" })
 local failed_frames = setmetatable({}, { __mode = "k" })
+local pending_frames = setmetatable({}, { __mode = "k" })
+local hidden_legacy = setmetatable({}, { __mode = "k" })
+local retry_states = setmetatable({}, { __mode = "k" })
+-- One initial attempt plus three automatic retries. Routine UNIT_AURA/world/
+-- regen updates must not reset this budget for an incompatible native surface.
+local RETRY_DELAYS = { 0.25, 1, 3 }
+local retry_timer
+local retry_timer_due
+local schedule_recovery
+
+local function in_combat_lockdown()
+	return _G.InCombatLockdown and _G.InCombatLockdown()
+end
 local native_generation = 0
 local dynamic_refresh_count = 0
 local dynamic_refresh_mark_count = 0
@@ -514,7 +527,7 @@ local function native_methods_ready(state)
 end
 
 local function should_use_native(frame)
-	if not native_enabled or not frame or frame.force_show or failed_frames[frame] then
+	if not native_enabled or not frame or frame.force_show then
 		return false
 	end
 	local state = get_native_capabilities()
@@ -1023,12 +1036,17 @@ local function get_group_enabled(db, is_buff)
 	return db.enabled_debuffs
 end
 
-local function create_native_group(owner_frame, db, is_buff)
+local function create_native_group(owner_frame, db, is_buff, groups)
 	local cfg = is_buff and db.layout.buff or db.layout.debuff
 	local initially_enabled = get_group_enabled(db, is_buff)
 	local holder = _G.CreateFrame("Frame", nil, owner_frame)
+	-- Retain partial allocations so an exception anywhere in construction can
+	-- retire both surfaces before a bounded retry creates their replacements.
+	local group = { holder = holder }
+	groups[is_buff and "buff" or "debuff"] = group
 	local point, effective_layout = configure_holder(holder, owner_frame, cfg)
 	local container = _G.CreateFrame("AuraContainer", nil, holder, "CustomAuraContainerTemplate")
+	group.container = container
 	if type(container.SetEditModePreviewEnabled) == "function" then
 		container:SetEditModePreviewEnabled(false)
 	end
@@ -1040,6 +1058,7 @@ local function create_native_group(owner_frame, db, is_buff)
 	container:SetFrameLevel(holder:GetFrameLevel())
 
 	local own_filter, other_filter, filter_mode = get_ownership_group_filters(db, cfg, is_buff, owner_frame)
+	group.otherFilterString = other_filter
 	local kind = is_buff and "buff" or "debuff"
 	local primary_ownership = other_filter and "own" or (filter_mode == "native-mine" and "own" or "combined")
 	local own_size = get_ownership_icon_size(db, cfg, kind, primary_ownership)
@@ -1139,14 +1158,21 @@ end
 
 local function record_failure(frame, error_text)
 	failed_frames[frame] = tostring(error_text or "unknown")
+	local retry = retry_states[frame] or { attempts = 0 }
+	retry_states[frame] = retry
+	retry.attempts = retry.attempts + 1
+	local delay = RETRY_DELAYS[retry.attempts]
+	retry.due = delay and (_G.GetTime() + delay) or nil
 	local state = native_frames[frame]
 	if state then
 		state.lastError = failed_frames[frame]
 	end
+	schedule_recovery()
 end
 
 local function clear_failure(frame)
 	failed_frames[frame] = nil
+	retry_states[frame] = nil
 end
 
 local function create_native_state(frame, db)
@@ -1159,15 +1185,13 @@ local function create_native_state(frame, db)
 	}
 	native_frames[frame] = state
 	local ok, result = pcall(function()
-		state.groups.buff = create_native_group(frame, db, true)
-		state.groups.debuff = create_native_group(frame, db, false)
+		state.groups.buff = create_native_group(frame, db, true, state.groups)
+		state.groups.debuff = create_native_group(frame, db, false, state.groups)
 	end)
 	if not ok then
-		record_failure(frame, result)
 		retire_state(frame, state)
 		return nil, result
 	end
-	clear_failure(frame)
 	return state
 end
 
@@ -1246,20 +1270,107 @@ function PitBull4_Aura:Lorenzo121NativeRendererActive()
 	return native_enabled and self:Lorenzo121NativeRendererAvailable()
 end
 
+local function can_recover_frame(frame)
+	return frame:IsShown() and not frame.force_show and frame.unit
+		and _G.UnitExists(frame.unit) and PitBull4_Aura:GetLayoutDB(frame).enabled
+end
+
+function PitBull4_Aura:Lorenzo121CancelNativeRecovery()
+	if retry_timer then
+		self:CancelTimer(retry_timer)
+	end
+	retry_timer = nil
+	retry_timer_due = nil
+end
+
+function PitBull4_Aura:Lorenzo121DisableNativeFrames()
+	-- AceEvent unregisters module events on disable. Use the core's deferred
+	-- queue so disabling in combat still tears down safely after regen, even
+	-- though this module will no longer receive PLAYER_REGEN_ENABLED itself.
+	if in_combat_lockdown() then
+		PitBull4:RunOnLeaveCombat(self.Lorenzo121DisableNativeFrames, self)
+		return
+	end
+	if not self:IsEnabled() then
+		retire_all_states()
+	end
+end
+
+schedule_recovery = function()
+	if in_combat_lockdown() or not PitBull4_Aura:IsEnabled()
+		or not PitBull4_Aura:Lorenzo121NativeRendererActive() then
+		return
+	end
+	local due
+	for frame, retry in pairs(retry_states) do
+		if retry.due and can_recover_frame(frame) and (not due or retry.due < due) then
+			due = retry.due
+		end
+	end
+	if not due then
+		PitBull4_Aura:Lorenzo121CancelNativeRecovery()
+		return
+	end
+	if retry_timer and retry_timer_due <= due then return end
+	PitBull4_Aura:Lorenzo121CancelNativeRecovery()
+	retry_timer_due = due
+	retry_timer = PitBull4_Aura:ScheduleTimer("Lorenzo121RetryNativeFrames", math_max(0.01, due - _G.GetTime()))
+end
+
+function PitBull4_Aura:Lorenzo121RetryNativeFrames()
+	retry_timer = nil
+	retry_timer_due = nil
+	-- If combat began after scheduling, retain the budget and resume on regen.
+	if in_combat_lockdown() or not self:IsEnabled() or not self:Lorenzo121NativeRendererActive() then
+		return
+	end
+	local now = _G.GetTime()
+	local frames = {}
+	for frame, retry in pairs(retry_states) do
+		if retry.due and retry.due <= now and can_recover_frame(frame) then
+			frames[#frames + 1] = frame
+		end
+	end
+	for _, frame in ipairs(frames) do
+		self:Update(frame)
+	end
+	schedule_recovery()
+end
+
+function PitBull4_Aura:Lorenzo121NativeRecoveryAfterCombat()
+	if in_combat_lockdown() or not self:IsEnabled() then return end
+	-- Re-evaluate current visibility/layout/unit state, never replay a stale
+	-- combat-time clear after the unit has already returned.
+	for frame in pairs(pending_frames) do
+		pending_frames[frame] = nil
+		if not frame:IsShown() then
+			self:ClearFrame(frame)
+		end
+	end
+	self:UpdateAll()
+	schedule_recovery()
+end
+
 function PitBull4_Aura:Lorenzo121GetNativeEnabled()
 	return native_enabled
 end
 
 function PitBull4_Aura:Lorenzo121SetNativeEnabled(enabled)
+	if in_combat_lockdown() then
+		PitBull4:RunOnLeaveCombat(self.Lorenzo121SetNativeEnabled, self, enabled)
+		return
+	end
 	local was_enabled = native_enabled
 	native_enabled = enabled and true or false
 	if native_enabled ~= was_enabled then
 		reset_surface_validation()
 	end
 	if not native_enabled then
+		self:Lorenzo121CancelNativeRecovery()
 		retire_all_states()
 		for frame in pairs(failed_frames) do
 			failed_frames[frame] = nil
+			retry_states[frame] = nil
 		end
 	end
 	if self.Lorenzo121 then
@@ -1270,10 +1381,16 @@ function PitBull4_Aura:Lorenzo121SetNativeEnabled(enabled)
 end
 
 function PitBull4_Aura:Lorenzo121RebuildNativeContainers()
+	if in_combat_lockdown() then
+		PitBull4:RunOnLeaveCombat(self.Lorenzo121RebuildNativeContainers, self)
+		return
+	end
+	self:Lorenzo121CancelNativeRecovery()
 	reset_surface_validation()
 	retire_all_states()
 	for frame in pairs(failed_frames) do
 		failed_frames[frame] = nil
+		retry_states[frame] = nil
 	end
 	self:UpdateAll()
 end
@@ -1282,8 +1399,21 @@ function PitBull4_Aura:Lorenzo121HasNativeFailures()
 	return next(failed_frames) ~= nil
 end
 
-function PitBull4_Aura:Lorenzo121NativeHandlesUnitAura(_unit)
-	return self:Lorenzo121NativeRendererActive() and not self:Lorenzo121HasNativeFailures()
+function PitBull4_Aura:Lorenzo121NativeOwnsFrame(frame)
+	local state = native_frames[frame]
+	return state ~= nil and not frame.force_show and not failed_frames[frame]
+		and state.unit == frame.unit and self:Lorenzo121NativeRendererActive()
+end
+
+function PitBull4_Aura:Lorenzo121NativeHandlesUnitAura(unit)
+	local found = false
+	for frame in PitBull4:IterateFrames() do
+		if frame.unit == unit then
+			found = true
+			if not self:Lorenzo121NativeOwnsFrame(frame) then return false end
+		end
+	end
+	return found
 end
 
 function PitBull4_Aura:Lorenzo121ShouldRunLegacyAuraTicker()
@@ -1354,15 +1484,11 @@ function PitBull4_Aura:Lorenzo121UpdateNativeFrame(frame)
 	local state = native_frames[frame]
 	-- Forever managed containers own UNIT_AURA. Once built, do not push layout,
 	-- filters or enabled state through the container during combat.
-	if state and _G.InCombatLockdown and _G.InCombatLockdown() then
-		local desired_unit = get_unit_token(frame)
-		for _, group in pairs(state.groups or {}) do
-			if group.container and group.container:GetUnit() ~= desired_unit then
-				pcall(group.container.SetUnit, group.container, desired_unit)
-			end
-		end
+	if in_combat_lockdown() then
+		pending_frames[frame] = true
 		return true
 	end
+	pending_frames[frame] = nil
 	if state then
 		local buff_rebuild = group_needs_rebuild(state.groups.buff, frame, db, db.layout.buff, true)
 		local debuff_rebuild = group_needs_rebuild(state.groups.debuff, frame, db, db.layout.debuff, false)
@@ -1383,7 +1509,6 @@ function PitBull4_Aura:Lorenzo121UpdateNativeFrame(frame)
 	local ok_debuff, err_debuff = configure_group(state.groups.debuff, frame, db, false)
 	if not ok_buff or not ok_debuff then
 		local err = err_buff or err_debuff or "native-config-failed"
-		record_failure(frame, err)
 		retire_state(frame, state)
 		return false, err
 	end
@@ -1392,8 +1517,22 @@ function PitBull4_Aura:Lorenzo121UpdateNativeFrame(frame)
 end
 
 function PitBull4_Aura:Lorenzo121ClearNativeFrame(frame)
+	if in_combat_lockdown() then
+		-- A transient missing unit is not a renderer teardown. Its secure parent
+		-- owns immediate visibility; keep native groups armed for reacquisition.
+		pending_frames[frame] = true
+		return
+	end
+	pending_frames[frame] = nil
 	local state = native_frames[frame]
 	if not state then
+		return
+	end
+	-- Do not suspend an enabled renderer for temporary unit absence, including
+	-- just before combat starts. Native containers and the secure parent already
+	-- track unit/parent visibility; retaining their groups lets them recover in
+	-- combat without an insecure Show/SetAuraGroupEnabled call.
+	if native_enabled and self:IsEnabled() and not frame.force_show and self:GetLayoutDB(frame).enabled then
 		return
 	end
 	for _, group in pairs(state.groups or {}) do
@@ -1446,7 +1585,10 @@ function PitBull4_Aura:Lorenzo121GetNativeStatusLines()
 	for frame, err in pairs(failed_frames) do
 		failure_count = failure_count + 1
 		if #lines < 16 then
+			local retry = retry_states[frame]
 			lines[#lines + 1] = "12.1 native failure frame=" .. safe_frame_name(frame) .. " error=" .. tostring(err)
+				.. " attempts=" .. tostring(retry and retry.attempts or 0)
+				.. " retry=" .. (retry and retry.due and "pending" or "exhausted")
 		end
 	end
 	table_insert(lines, 1, "12.1 native renderer requested=" .. tostring(native_enabled)
@@ -1473,7 +1615,47 @@ end
 local legacy_update_frame = PitBull4_Aura.UpdateFrame
 local legacy_clear_frame = PitBull4_Aura.ClearFrame
 
+-- Never run the legacy allocator/layout/pool teardown during lockdown.
+-- Hide only controls explicitly reported unprotected; protected/forbidden
+-- surfaces remain owned by their secure parent until post-combat reconciliation.
+local function suspend_legacy(frame)
+	local hidden = hidden_legacy[frame] or {}
+	hidden_legacy[frame] = hidden
+	local function suspend(control)
+		if control and (not control.IsForbidden or not control:IsForbidden())
+			and control.IsProtected and not control:IsProtected() then
+			if control:IsShown() then
+				control:Hide()
+				hidden[control] = true
+			end
+		end
+	end
+	for _, controls in pairs({ frame.aura_buffs or {}, frame.aura_debuffs or {} }) do
+		for _, control in ipairs(controls) do suspend(control) end
+	end
+	suspend(frame.aura_highlight)
+end
+
+local function restore_legacy(frame)
+	local hidden = hidden_legacy[frame]
+	if not hidden then return end
+	hidden_legacy[frame] = nil
+	for control in pairs(hidden) do control:Show() end
+end
+
 function PitBull4_Aura:UpdateFrame(frame, ...)
+	if in_combat_lockdown() then
+		pending_frames[frame] = true
+		if self:Lorenzo121NativeOwnsFrame(frame) then
+			local state = native_frames[frame]
+			refresh_dynamic_group(state.groups.buff)
+			refresh_dynamic_group(state.groups.debuff)
+		else
+			suspend_legacy(frame)
+		end
+		return
+	end
+	restore_legacy(frame)
 	if frame and frame.force_show then
 		-- Config Mode intentionally uses the legacy sample-aura renderer. Hide the
 		-- persistent native containers while those samples are visible so the user
@@ -1482,8 +1664,13 @@ function PitBull4_Aura:UpdateFrame(frame, ...)
 		self:Lorenzo121ClearNativeFrame(frame)
 	end
 	if should_use_native(frame) then
-		local ok, err = self:Lorenzo121UpdateNativeFrame(frame)
-		if ok then
+		local retry = retry_states[frame]
+		if retry and (not retry.due or retry.due > _G.GetTime()) then
+			schedule_recovery()
+			return legacy_update_frame(self, frame, ...)
+		end
+		local called, ok, err = pcall(self.Lorenzo121UpdateNativeFrame, self, frame)
+		if called and ok then
 			-- Remove pooled legacy buttons once so both renderers cannot overlap.
 			if self.ClearAuras then
 				self:ClearAuras(frame)
@@ -1491,16 +1678,30 @@ function PitBull4_Aura:UpdateFrame(frame, ...)
 			if frame.aura_highlight then
 				frame.aura_highlight = frame.aura_highlight:Delete()
 			end
+			schedule_recovery()
 			return
 		end
-		record_failure(frame, err)
+		-- Count once per attempt, including unexpected configuration exceptions.
+		retire_state(frame, native_frames[frame])
+		record_failure(frame, called and err or ok)
 	end
 	return legacy_update_frame(self, frame, ...)
 end
 
 function PitBull4_Aura:ClearFrame(frame, ...)
 	self:Lorenzo121ClearNativeFrame(frame)
+	if in_combat_lockdown() then
+		suspend_legacy(frame)
+		return
+	end
+	hidden_legacy[frame] = nil
 	return legacy_clear_frame(self, frame, ...)
+end
+
+-- Aura.lua originally aliases OnHide to its legacy ClearFrame function. Route
+-- the hook through the native boundary too, including pooled fallback cleanup.
+function PitBull4_Aura:OnHide(frame, ...)
+	return self:ClearFrame(frame, ...)
 end
 
 if PitBull4_Aura.Lorenzo121 then
