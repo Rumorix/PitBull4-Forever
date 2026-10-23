@@ -264,7 +264,7 @@ function BarModule:UpdateFrame(frame)
 	control:SetStatusBarTexture(texture)
 	local r, g, b, a, protected_reaction_color = call_color_function(self, frame)
 	if isAtlas then
-		control:SetStatusBarColor(1, 1, 1, 1) -- a * db.alpha
+		control:SetStatusBarColor(1, 1, 1, a)
 		control.bg:SetAtlas(texture)
 	else
 		control:GetStatusBarTexture():SetVertexColor(r, g, b, a)
@@ -426,14 +426,6 @@ function call_background_color_function(self, frame, fg_r, fg_g, fg_b)
 	-- yellow foreground never paints the missing-health region. Explicit layout
 	-- background colors continue to take precedence.
 	if self.id == "HealthBar" then
-		-- Patch 056: An opaque empty-bar texture behind a translucent fill
-		-- prevents the game world from showing through the filled area.
-		-- When the background is still at its default opacity, make it
-		-- transparent for translucent health fills. A deliberately configured
-		-- background opacity (other than 1) remains under user control.
-		if bar_db.alpha and bar_db.alpha < 1 and alpha == 1 then
-			alpha = 0
-		end
 		if custom_background then
 			return custom_background[1], custom_background[2], custom_background[3], alpha
 		end

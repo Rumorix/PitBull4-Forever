@@ -15,20 +15,29 @@ L["Select which profile to share."]
 L["Share"]
 L["Share layouts"]
 L["Share profile"]
-L["Some things to keep in mind:\n- Fonts and textures are not included and may get reset to default if not available.\n- Global module settings are not included with layouts (e.g. Aura filters)\n- Module settings will only be imported if the module is currently enabled.\n"]
+L["Some things to keep in mind:\n- Fonts and textures are not included and may get reset to default if not available.\n- Global module settings are not included with layouts (e.g. Aura filters)\n- Module settings will only be imported if the module is currently enabled.\n- The string contains only PitBull4 settings and layout names, plus the game and addon version it was made with. No character, account or chat data.\n"]
+L["While this should be safe, it's always good to have a backup of your SavedVariables in case something bad happens!\n\nYou will be warned before a string with custom LuaTexts code is imported, and overwriting a profile keeps a backup copy of it."]
 
 -- popup
 L["Are you sure you want to import the following layouts into the current profile?\n\n%s"]
 L["Enter a new profile name:"]
-L["A profile named \"%s\" already exists.\n\nOverwrite it with the imported profile? This cannot be undone."]
+L["A profile named \"%s\" already exists.\n\nOverwrite it with the imported profile? A backup copy of the current one is kept."]
 L["Copy (Ctrl-C) this to the clipboard."]
+L["Before you import this string:\n\n%s"]
+L["Continue"]
+L["This string was made on a different game client (interface %s, this client: %s). Some settings may not work here."]
+L["It contains custom Lua code in these LuaTexts:\n%s\n\nLuaTexts run with full access to the addon API. Only continue if you trust whoever shared this string."]
+L["...and %d more"]
 
 -- processing
 L["Profile import complete! You may now select %q under Profiles."]
+L["The previous %q profile was saved as %q."]
+L["%s (backup)"]
 L["Skipped settings for the following disabled or unavailable modules: %s"]
 -- ERROR
 L["Import data is corrupt."]
 L["Import data is from an incompatible version."]
+L["Import string is too large (%d characters, the limit is %d)."]
 L["Missing profile name."]
 L["%q is the active profile and can't be overwritten. Choose another name, or switch to a different profile first."]
 L["Layout %q is corrupt, skipping."]
@@ -44,6 +53,10 @@ local LibDeflate = LibStub("LibDeflate", true)
 local CURRENT_VERSION = 2
 local MINIMAL_VERSION = 2
 local DEFLATE_OPTS = { level = 9 }
+-- Real share strings are a few KB; refuse anything far larger before decoding.
+local MAX_IMPORT_LENGTH = 1024 * 1024
+-- How many custom LuaTexts the import warning lists by name.
+local MAX_LISTED_TEXTS = 8
 
 local layouts_to_export = {}
 local profile_to_export = nil
@@ -96,6 +109,105 @@ local function checkProfileExists(name)
 		if name == key then
 			return true
 		end
+	end
+end
+
+local function suggestProfileName(name)
+	local new_name, counter = name, 0
+	while checkProfileExists(new_name) do
+		counter = counter + 1
+		new_name = ("%s (%d)"):format(name, counter)
+	end
+	return new_name
+end
+
+-- Copy a profile and its module settings to a new name; returns that name.
+local function backupProfile(name)
+	local backup_name = suggestProfileName(L["%s (backup)"]:format(name))
+	PitBull4.db.profiles[backup_name] = deep_copy(PitBull4.db.profiles[name])
+	for id, module in PitBull4:IterateModules() do
+		local profiles = module.db and module.db.profiles
+		if profiles and profiles[name] then
+			profiles[backup_name] = deep_copy(profiles[name])
+		end
+	end
+	return backup_name
+end
+
+-- Recorded in exports so imports can tell which game client made them.
+local function getClientInfo()
+	local _, _, _, interface = GetBuildInfo()
+	return {
+		project = _G.WOW_PROJECT_ID,
+		interface = interface,
+		addon = C_AddOns.GetAddOnMetadata("PitBull4", "Version"),
+	}
+end
+
+-- "Layout: Text" for every imported LuaText whose code isn't a stock script.
+-- Imported LuaTexts run with full access to the addon API once used.
+local function findCustomLuaTexts(imported_table)
+	local lua_texts = PitBull4:GetModule("LuaTexts", true)
+	local found = {}
+
+	local function scan(layout, module_db)
+		local elements = type(module_db) == "table" and module_db.elements
+		if type(elements) ~= "table" then
+			return
+		end
+		for name, element in next, elements do
+			local code = type(element) == "table" and element.code
+			if code and not (lua_texts and lua_texts:IsProvidedCode(code)) then
+				found[#found+1] = ("%s: %s"):format(tostring(layout), tostring(name))
+			end
+		end
+	end
+
+	local modules = imported_table.modules
+	if type(modules) ~= "table" then
+		return found
+	end
+	if imported_table.type == "profile" then
+		local module_db = modules.LuaTexts
+		if type(module_db) == "table" and type(module_db.layouts) == "table" then
+			for layout, layout_db in next, module_db.layouts do
+				scan(layout, layout_db)
+			end
+		end
+	else
+		for layout, layout_modules in next, modules do
+			if type(layout_modules) == "table" then
+				scan(layout, layout_modules.LuaTexts)
+			end
+		end
+	end
+	sort(found)
+	return found
+end
+
+-- Text for the import warning dialog, or nil if there is nothing to warn about.
+local function getImportWarnings(imported_table)
+	local warnings = {}
+
+	local client = imported_table.client
+	if type(client) == "table" and client.project ~= _G.WOW_PROJECT_ID then
+		warnings[#warnings+1] = L["This string was made on a different game client (interface %s, this client: %s). Some settings may not work here."]:format(tostring(client.interface), tostring(getClientInfo().interface))
+	end
+
+	local custom = findCustomLuaTexts(imported_table)
+	if #custom > 0 then
+		local list = {}
+		for i = 1, math.min(#custom, MAX_LISTED_TEXTS) do
+			list[i] = "- " .. custom[i]
+		end
+		if #custom > MAX_LISTED_TEXTS then
+			list[#list+1] = L["...and %d more"]:format(#custom - MAX_LISTED_TEXTS)
+		end
+		warnings[#warnings+1] = L["It contains custom Lua code in these LuaTexts:\n%s\n\nLuaTexts run with full access to the addon API. Only continue if you trust whoever shared this string."]:format(table.concat(list, "\n"))
+	end
+
+	if #warnings > 0 then
+		return table.concat(warnings, "\n\n")
 	end
 end
 
@@ -170,7 +282,7 @@ StaticPopupDialogs["PB4ShareConfigImportProfileConfirmDialog"] = {
 }
 
 StaticPopupDialogs["PB4ShareConfigImportProfileOverwriteDialog"] = {
-	text = L["A profile named \"%s\" already exists.\n\nOverwrite it with the imported profile? This cannot be undone."],
+	text = L["A profile named \"%s\" already exists.\n\nOverwrite it with the imported profile? A backup copy of the current one is kept."],
 	button1 = _G.OKAY,
 	button2 = _G.CANCEL,
 	hasEditBox = false,
@@ -207,6 +319,37 @@ local function ImportDialog(imported_table)
 	end
 end
 
+StaticPopupDialogs["PB4ShareConfigImportWarningDialog"] = {
+	text = L["Before you import this string:\n\n%s"],
+	button1 = L["Continue"],
+	button2 = _G.CANCEL,
+	hasEditBox = false,
+	showAlert = true,
+	OnAccept = function(self) ImportDialog(self.data) end,
+	OnShow = function(self)
+		-- Get above the PB4 config window
+		self:SetFrameStrata("FULLSCREEN_DIALOG")
+		self:SetFrameLevel(self:GetFrameLevel() + 2)
+	end,
+	OnHide = function(self)
+		self:SetFrameStrata("DIALOG")
+	end,
+	timeout = 0,
+	whileDead = 1,
+	hideOnEscape = 1,
+	preferredIndex = 4,
+}
+
+-- Show the warnings (if any) first; the normal import dialog follows on Continue.
+local function ConfirmImport(imported_table)
+	local warnings = getImportWarnings(imported_table)
+	if warnings then
+		StaticPopup_Show("PB4ShareConfigImportWarningDialog", warnings, nil, imported_table)
+	else
+		ImportDialog(imported_table)
+	end
+end
+
 
 local function ExportDialog(export_mode)
 	local exported_string = DoExport(export_mode)
@@ -235,8 +378,11 @@ end
 function DoExport(export_mode)
 	Debug("DoExport", export_mode)
 
+	-- Older PitBull4 builds ignore the extra client field, so the format
+	-- version stays the same.
 	local exported_table = {
 		version = CURRENT_VERSION,
+		client = getClientInfo(),
 		modules = {},
 	}
 
@@ -287,10 +433,20 @@ function DoImportPhase1(import_string)
 
 	if type(import_string) ~= "string" then
 		Debug("Import needs a string, got", type(import_string))
+	elseif #import_string > MAX_IMPORT_LENGTH then
+		Error(L["Import string is too large (%d characters, the limit is %d)."]:format(#import_string, MAX_IMPORT_LENGTH))
+		return
 	else
-		local decompressed, result = LibDeflate:DecompressDeflate(LibDeflate:DecodeForPrint(import_string))
-		if not decompressed then
-			Debug("Decompress error", result)
+		-- Pasted text is untrusted: DecodeForPrint returns nil for characters a
+		-- share string can't contain, and DecompressDeflate throws on bad input
+		-- instead of returning an error.
+		local decoded = LibDeflate:DecodeForPrint(import_string)
+		local ok, decompressed = false, nil
+		if decoded then
+			ok, decompressed = pcall(LibDeflate.DecompressDeflate, LibDeflate, decoded)
+		end
+		if not ok or not decompressed then
+			Debug("Decode/decompress error", decoded and decompressed or "invalid characters")
 		else
 			success, result = LibSerialize:Deserialize(decompressed)
 			if success then
@@ -316,7 +472,7 @@ function DoImportPhase1(import_string)
 			return
 		end
 
-		ImportDialog(imported_table)
+		ConfirmImport(imported_table)
 
 	elseif imported_table.type == "layouts" then
 		-- rename layouts with name conflicts
@@ -344,7 +500,7 @@ function DoImportPhase1(import_string)
 			end
 		end
 
-		ImportDialog(imported_table)
+		ConfirmImport(imported_table)
 
 	else
 		Error(L["Unknown import type."])
@@ -399,6 +555,9 @@ function DoImportPhase2Profile(profile_to_import, profile_name_to_import)
 		return
 	end
 
+	local overwriting = checkProfileExists(profile_name)
+	local backup_name = overwriting and backupProfile(profile_name)
+
 	Debug("Importing new profile", profile_name)
 	PitBull4.db.profiles[profile_name] = deep_copy(profile_to_import.profile)
 
@@ -410,7 +569,13 @@ function DoImportPhase2Profile(profile_to_import, profile_name_to_import)
 			Debug("Including module", id)
 			module.db.profiles[profile_name] = deep_copy(profile_module)
 			profile_to_import.modules[id] = nil
+		elseif overwriting and module.db and module.db.profiles then
+			-- Don't leave the old profile's settings for modules the import lacks.
+			module.db.profiles[profile_name] = nil
 		end
+	end
+	if backup_name then
+		Print(L["The previous %q profile was saved as %q."]:format(profile_name, backup_name))
 	end
 	for name in next, profile_to_import.modules do
 		skipped[name] = true
@@ -479,7 +644,7 @@ function PitBull4.Options.get_share_options()
 		args = {
 			import_info = {
 				type = "description",
-				name = L["While this should be safe, it's always good to have a backup of your SavedVariables in case something bad happens!"],
+				name = L["While this should be safe, it's always good to have a backup of your SavedVariables in case something bad happens!\n\nYou will be warned before a string with custom LuaTexts code is imported, and overwriting a profile keeps a backup copy of it."],
 				order = 1,
 				fontSize = "medium",
 			},
@@ -506,7 +671,7 @@ function PitBull4.Options.get_share_options()
 		args = {
 			export_info = {
 				type = "description",
-				name = L["Some things to keep in mind:\n- Fonts and textures are not included and may get reset to default if not available.\n- Global module settings are not included with layouts (e.g. Aura filters)\n- Module settings will only be imported if the module is currently enabled.\n"],
+				name = L["Some things to keep in mind:\n- Fonts and textures are not included and may get reset to default if not available.\n- Global module settings are not included with layouts (e.g. Aura filters)\n- Module settings will only be imported if the module is currently enabled.\n- The string contains only PitBull4 settings and layout names, plus the game and addon version it was made with. No character, account or chat data.\n"],
 				order = 1,
 				fontSize = "medium"
 			},
