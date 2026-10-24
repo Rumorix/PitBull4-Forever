@@ -181,6 +181,26 @@ local function harness()
 end
 
 local tests = {}
+function tests.missing_native_unit_requests_reparse_without_disabling_groups()
+	for _, combat in ipairs({ false, true }) do
+		local h = harness(); local f = h:new_frame(); h.aura:Update(f)
+		local reparses = 0
+		for _, c in ipairs(h.containers) do
+			local show, refresh = c.Show, c.UpdateAllAuras
+			function c:Show() reparses = reparses + 1; return show(self) end
+			function c:UpdateAllAuras() reparses = reparses + 1; return refresh(self) end
+		end
+		h.combat = combat; h.absent = f.unit
+		h.aura:Update(f)
+		assert(reparses == 2, "unit disappearance did not reparse both native containers")
+		h:assert_armed(f)
+		h.absent = nil; h.aura:Update(f)
+		if combat then assert(reparses == 4, "returned unit did not request a fresh parse") end
+		h:assert_armed(f)
+		assert(h.violations == 0 and #h.containers == 2)
+	end
+end
+
 function tests.combat_clear_and_reacquire_preserves_groups()
 	local h = harness(); local f = h:new_frame(); h.aura:Update(f)
 	h.combat = true; h.absent = f.unit
@@ -377,7 +397,7 @@ function tests.native_combat_unit_aura_is_independent_of_other_frame_failure()
 	assert(h.containers[1].refreshes == 1 and h.containers[2].refreshes == 1)
 	h.absent = f.unit; h.aura:Update(f); h.absent = nil
 	h.aura:UNIT_AURA("UNIT_AURA", f.unit)
-	assert(h.containers[1].refreshes == 2 and h.violations == 0)
+	assert(h.containers[1].refreshes == 3 and h.violations == 0)
 	h:assert_armed(f)
 end
 

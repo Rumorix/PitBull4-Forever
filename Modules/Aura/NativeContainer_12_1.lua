@@ -1521,6 +1521,13 @@ function PitBull4_Aura:Lorenzo121ClearNativeFrame(frame)
 		-- A transient missing unit is not a renderer teardown. Its secure parent
 		-- owns immediate visibility; keep native groups armed for reacquisition.
 		pending_frames[frame] = true
+		-- Clearing a missing unit must also invalidate its old aura set. Keep
+		-- groups armed, but request the same native reparse as a token change.
+		if self:Lorenzo121NativeOwnsFrame(frame) then
+			local state = native_frames[frame]
+			refresh_dynamic_group(state.groups.buff)
+			refresh_dynamic_group(state.groups.debuff)
+		end
 		return
 	end
 	pending_frames[frame] = nil
@@ -1533,6 +1540,8 @@ function PitBull4_Aura:Lorenzo121ClearNativeFrame(frame)
 	-- track unit/parent visibility; retaining their groups lets them recover in
 	-- combat without an insecure Show/SetAuraGroupEnabled call.
 	if native_enabled and self:IsEnabled() and not frame.force_show and self:GetLayoutDB(frame).enabled then
+		refresh_dynamic_group(state.groups.buff)
+		refresh_dynamic_group(state.groups.debuff)
 		return
 	end
 	for _, group in pairs(state.groups or {}) do

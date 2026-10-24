@@ -126,7 +126,7 @@ promise immediate protected cleanup. After combat, current visible frames rebuil
 hidden frames receive cleanup even though normal frame iteration excludes them.
 A returned unit is updated instead of replaying its earlier clear.
 
-The Lua 5.1 suite now contains 17 cases, including mixed renderers for the same
+The Lua 5.1 suite now contains 18 cases, including mixed renderers for the same
 unit, failed initialization, combat `UNIT_AURA`, transient disappearance, fallback
 `OnHide`, disabled native mode, and protected/forbidden controls.
 
@@ -135,3 +135,20 @@ healthy native frame, apply/remove auras during combat, and verify the healthy
 frame stays live. Confirm unprotected fallback visuals suspend and recover after
 combat, hidden fallback controls are cleaned up, and protected fallback controls
 produce no blocked-action/taint errors. Test raid performance mode as well.
+
+## Tester follow-up: stale Target/Target-of-Target icons
+
+The 23 October portal-transition report is not independently reproduced. Code
+review found that clearing a temporarily absent unit preserved native groups but
+never requested a reparse. That clear path now uses the existing native refresh:
+`UpdateAllAuras()` during combat, and the existing Hide/Show refresh outside combat.
+Groups remain armed for reacquisition; no GUID or aura payload is read. Fallback
+behavior is unchanged. The regression verifies refresh requests on disappearance
+and combat-time return, not Blizzard's actual removal of visible icons.
+
+Live verification required: with Target and ToT auras visible, let ToT disappear,
+clear/reacquire Target, and cross an instance portal, both solo and in a party,
+in and out of combat. Check that old icons disappear and current auras return.
+Repeat with native mode disabled or a naturally occurring fallback, and check
+for duplicate icons, Lua errors, blocked actions and taint. Record client build
+and native diagnostics; automated tests do not verify live protected rendering.
