@@ -5,6 +5,7 @@ on:
     types: [opened, reopened]
   schedule:
     - cron: '23 2 * * *'
+    - cron: '7,27,47 * * * *'
   workflow_dispatch:
 
 permissions:
@@ -39,7 +40,9 @@ jobs:
           echo "Queued read-only Codex analysis for issue #${ISSUE_NUMBER}"
 
   gradual_backfill:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'schedule' && github.event.schedule == '23 2 * * *')
     runs-on: ubuntu-latest
     steps:
       - name: Backfill at most two old issues per repository each day
@@ -67,3 +70,32 @@ jobs:
               gh api --method POST --input - "repos/${GITHUB_REPOSITORY}/issues/${issue}/labels" >/dev/null
             echo "Backfill queued #${issue}"
           done <<< "$numbers"
+
+  queue_draft_fix:
+    if: >-
+      github.event_name == 'schedule' &&
+      github.event.schedule == '7,27,47 * * * *'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Queue one analyzed issue for a Codex Draft PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          raw=$(gh api "repos/${GITHUB_REPOSITORY}/issues?state=open&per_page=100&sort=updated&direction=desc")
+          issue=$(jq -r '
+            [ .[]
+              | select(.pull_request == null)
+              | select((.title | startswith("[Tracking]")) | not)
+              | select((.title | startswith("[Audit Index]")) | not)
+              | select((.title | contains("[TEST]")) | not)
+              | select([.labels[].name] | index("codex-analyzed") != null)
+              | select(([.labels[].name] | any(. == "codex-fix" or . == "codex-fixing" or . == "codex-fix-ready" or . == "codex-fix-failed" or . == "no-auto-fix" or . == "no-auto-codex" or . == "needs-info")) | not)
+            ] | .[0].number // empty
+          ' <<< "$raw")
+          if [ -z "$issue" ]; then
+            echo 'No analyzed issues awaiting Draft PR preparation.'
+            exit 0
+          fi
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/issues/${issue}/labels" -f 'labels[]=codex-fix' >/dev/null
+          echo "Queued issue #${issue} for the existing VM Codex fix worker."
