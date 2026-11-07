@@ -1,6 +1,7 @@
 
 local PitBull4 = _G.PitBull4
 local L = PitBull4.L
+local issecretvalue = _G.issecretvalue
 
 -- CONSTANTS ----------------------------------------------------------------
 
@@ -77,8 +78,11 @@ function PitBull4_CombatText:UpdateFrame(frame)
 
 	if frame.force_show and (not frame.unit or not UnitExists(frame.unit)) then
 		font_string:SetText(EXAMPLE_TEXT)
-	elseif font_string:GetText() == EXAMPLE_TEXT then
-		font_string:SetText("")
+	else
+		local text = font_string:GetText()
+		if not (issecretvalue and issecretvalue(text)) and text == EXAMPLE_TEXT then
+			font_string:SetText("")
+		end
 	end
 
 	return created
@@ -87,6 +91,18 @@ end
 local frame_to_time = {}
 
 function PitBull4_CombatText:UNIT_COMBAT(_, unit, event, flags, amount, type)
+	-- Inspect inputs before frame lookup, comparisons, table keys or formatting.
+	-- Older clients without secret values do not expose issecretvalue.
+	if issecretvalue and (issecretvalue(unit) or issecretvalue(event)
+		or issecretvalue(flags) or issecretvalue(amount) or issecretvalue(type)) then
+		return
+	end
+
+	local in_group = UnitInAnyGroup(unit)
+	if issecretvalue and issecretvalue(in_group) then
+		return
+	end
+
 	for frame in PitBull4:IterateFramesForUnitID(unit) do
 		local font_string = frame.CombatText
 		if font_string then
@@ -104,7 +120,7 @@ function PitBull4_CombatText:UNIT_COMBAT(_, unit, event, flags, amount, type)
 						size_modifier = BLOCK_SIZE_MODIFIER
 					end
 
-					if UnitInAnyGroup(unit) then
+					if in_group then
 						r, g, b = 1, 0, 0
 					elseif type > 0 then
 						r, g, b = 1, 1, 0
