@@ -638,8 +638,13 @@ local function build_raid_name_list_without_main_tanks(group_db)
 	for index = 1, math.min(num_members, MAX_RAID_MEMBERS) do
 		local name, _, subgroup, _, _, class_name, _, _, _, role, _, assigned_role = _G.GetRaidRosterInfo(index)
 		if name then
-			local public_role = issecretvalue(role) and nil or role
-			local public_assigned_role = issecretvalue(assigned_role) and nil or assigned_role
+			local public_role, public_assigned_role
+			if not issecretvalue(role) then
+				public_role = role
+			end
+			if not issecretvalue(assigned_role) then
+				public_assigned_role = assigned_role
+			end
 			local is_main_tank = public_role == "MAINTANK"
 			if not is_main_tank and ora_main_tanks then
 				is_main_tank = ora_main_tanks[name] or false
