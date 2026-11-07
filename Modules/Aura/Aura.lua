@@ -28,7 +28,7 @@ end)
 
 function PitBull4_Aura:OnEnable()
 	self:RegisterEvent("PLAYER_REGEN_DISABLED")
-	self:RegisterEvent("PLAYER_REGEN_ENABLED", "UpdateAll")
+	self:RegisterEvent("PLAYER_REGEN_ENABLED", "Lorenzo121NativeRecoveryAfterCombat")
 	self:RegisterEvent("PLAYER_ENTERING_WORLD")
 	self:RegisterEvent("UNIT_AURA")
 	-- Patch 031: Blizzard's 12.1 AuraContainer tracks a unit token, not the
@@ -59,6 +59,8 @@ end
 
 function PitBull4_Aura:OnDisable()
 	timerFrame:Hide()
+	self:Lorenzo121CancelNativeRecovery()
+	self:Lorenzo121DisableNativeFrames()
 end
 
 function PitBull4_Aura:OnProfileChanged()
@@ -152,20 +154,13 @@ function PitBull4_Aura:Lorenzo121RosterAuraUnitsChanged()
 end
 
 function PitBull4_Aura:UNIT_AURA(_, unit, update_info)
-	-- 12.1 native containers own UNIT_AURA registration and process protected
-	-- update payloads inside Blizzard's secure implementation. Avoid duplicate
-	-- legacy frame scans while the native path is healthy.
-	if self.Lorenzo121NativeHandlesUnitAura and self:Lorenzo121NativeHandlesUnitAura(unit) then
-		return
-	end
-
 	-- Patch 105: raid UNIT_AURA storms can be very expensive with many visible
 	-- group frames. When raid performance mode is active, coalesce repeated aura
 	-- updates for non-player raid roster units by a tiny interval. Player/party/target
 	-- frames and debuffs remain responsive; this only reduces duplicate raid spam.
-	if self.LorenzoPatch105ShouldThrottleRaidUnitAura and self:LorenzoPatch105ShouldThrottleRaidUnitAura(unit) then
-		return
-	end
+	local combat = _G.InCombatLockdown and _G.InCombatLockdown()
+	local throttled = self.LorenzoPatch105ShouldThrottleRaidUnitAura
+		and self:LorenzoPatch105ShouldThrottleRaidUnitAura(unit)
 	for frame in PitBull4:IterateFrames() do
 		local same_unit
 		if self.Lorenzo121UnitsMatch then
@@ -173,7 +168,12 @@ function PitBull4_Aura:UNIT_AURA(_, unit, update_info)
 		else
 			same_unit = frame.unit == unit
 		end
-		if same_unit then
+		local native_owned = same_unit and self.Lorenzo121NativeOwnsFrame and self:Lorenzo121NativeOwnsFrame(frame)
+		-- Native refreshes never enter the legacy allocator or inspect payloads.
+		-- Throttle only fallback work; an unrelated failure must not suppress
+		-- combat-safe refreshes on an already configured native container.
+		if same_unit and ((native_owned and combat)
+			or (not native_owned and (combat or not throttled))) then
 			if self:GetLayoutDB(frame).enabled then
 				self:UpdateFrame(frame)
 			else
