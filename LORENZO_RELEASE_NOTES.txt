@@ -1,3 +1,33 @@
+PitBull4 Forever v064 — CombatText Secret-Value Hotfix
+Build: PitBull4-Lorenzo-Forever-064
+Date: 2026-11-07
+
+RELEASE SCOPE
+- Fixes unsafe secret-value comparisons in CombatText frame refresh and UNIT_COMBAT event handling (issue #38, PR #39).
+- Guards GetText() before comparison with the preview example string.
+- Skips combat-text updates when required unit/event/flags/amount/type or group-membership inputs are secret; avoids related unsafe numeric operations and formatting.
+- Keeps the existing frame/module behavior for publicly readable combat data.
+- Adds Lua 5.1 regression tests and technical validation notes.
+- Retains all existing v063 features and bundled dependencies.
+
+TESTING AND LIMITATIONS
+- Automated Lua 5.1 mock tests and syntax checks were reported as passed by Codex.
+- These tests do not prove Blizzard secret-value behavior, combat safety, or absence of taint.
+- No in-game validation has been performed for this hotfix; user reports should include exact client build and steps.
+- In-game verification recommended: targettarget transitions, damage/healing/energize, text preview, fonts, frame hiding/reuse, and ADDON_ACTION_BLOCKED logs.
+
+INSTALLATION
+- Back up AddOns and WTF before updating.
+- Install the complete PitBull4-Forever.zip from the official GitHub Release, not the source ZIP.
+- Replace Interface/AddOns/PitBull4 outside combat and retain SavedVariables.
+
+SOURCE
+- GitHub PR #39: https://github.com/Rumorix/PitBull4-Forever/pull/39
+- Issue #38: https://github.com/Rumorix/PitBull4-Forever/issues/38
+
+----
+Historical release notes follow.
+
 PitBull4 Forever v063 — Stable Version Alignment
 Build: PitBull4-Lorenzo-Forever-063
 Date: 2026-10-23

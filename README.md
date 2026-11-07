@@ -2,7 +2,7 @@
 
 Community-maintained **PitBull4 Forever** fork for World of Warcraft.
 
-**Current source version:** `PitBull4-Lorenzo-Forever-063` (2026-10-23)
+**Current source version:** `PitBull4-Lorenzo-Forever-064` (2026-11-07; hotfix source)
 
 **Official Stable download:** [GitHub Releases](https://github.com/Rumorix/PitBull4-Forever/releases/latest)
 
@@ -17,7 +17,8 @@ This repository tracks the **Forever** codebase separately from the maintainer's
 - Consolidates the Forever v58-v60 changes (pet-range handling, ToT aura refresh attempts, health gradient).
 - Merges Soul Shards compatibility work from a separate v58 branch.
 - Includes PR #33 (independent Full/Empty opacity), #34 (media previews), #35 (sharing/import safety) and #36 (profile import/export with LibSerialize and LibDeflate).
-- The v063 source change aligns version metadata with the already published v062 functionality; no runtime behavior change.
+- v063 aligned stable metadata with v062; v064 adds the narrowly scoped CombatText secret-value handling fix from #38 / PR #39.
+- The v064 fix has local Lua 5.1 regression checks but has not been validated in a live WoW client.
 - Does **not** claim that all combat-specific behavior has been verified in-game.
 
 For the detailed build-specific changes, see [`LORENZO_RELEASE_NOTES.txt`](LORENZO_RELEASE_NOTES.txt) and [`LORENZO_BUILD_VERSION.txt`](LORENZO_BUILD_VERSION.txt).
