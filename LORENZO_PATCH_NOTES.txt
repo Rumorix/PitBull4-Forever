@@ -1,3 +1,10 @@
+Forever 064 - CombatText Secret-Value Hotfix
+- Guard display text before comparing it to the preview example.
+- Skip UNIT_COMBAT events with secret inputs before comparisons, arithmetic, table indexing or formatting.
+- Guard secret UnitInAnyGroup results; preserve ordinary CombatText display for public values.
+- Add local Lua 5.1 regression harness and verification notes (issue #38 / PR #39).
+- In-game secret-value and taint behavior not yet verified.
+
 Patch 090 - LegacyProfileUpgrade
 
 - Added a new top-level Profile Upgrade page between Edit Mode Backup and Profiles.

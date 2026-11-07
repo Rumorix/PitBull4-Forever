@@ -1,5 +1,7 @@
-PitBull4-Lorenzo-Forever-063
-Stable metadata alignment for Forever v063.
-Previous official Stable: v062 (source commit 9894698e1f80a69bb33758875fc433ba4f1d5436).
-Functionality is unchanged from v062. This update corrects in-game and source-controlled version labels.
-Previously merged changes included in v062 and v063: PRs #33, #34, #35 and #36.
+PitBull4-Lorenzo-Forever-064
+CombatText secret-value hotfix (issue #38, PR #39).
+Previous official Stable: v063 (source commit 1141f9942b6df8ff16079d0b605d2b4ebd0128d9).
+Fix merged to main: 84753d22373efccb934036b5ec34e54fb8b5c0a3.
+Changed module: Modules/CombatText/CombatText.lua; adds targeted tests and validation notes.
+Local Lua 5.1 regression checks reported as passed by the Codex worker.
+WoW in-game reproduction and combat/taint validation remain pending.
