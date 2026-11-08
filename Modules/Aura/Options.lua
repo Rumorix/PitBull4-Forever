@@ -1765,7 +1765,7 @@ PitBull4_Aura:SetLayoutOptionsFunction(function(self)
 		args = {
 			native_filter_note = {
 				type = 'description',
-				name = "Forever: Only my auras uses Blizzard's native PLAYER filter. Custom spell-name filters are not supported by the protected native renderer.",
+				name = "Forever native renderer: None uses Blizzard's base HELPFUL/HARMFUL filter; Only my auras uses PLAYER. Saved legacy filters are approximated, not evaluated as legacy rules. Legacy Aura highlights are not displayed on successful native rendering. Use the separate Dispel highlights module for dispel highlighting; it does not replace custom highlight rules. See Docs/Aura-native-filters-issue-29.md for migration guidance.",
 				order = 0,
 			},
 			buff = {
