@@ -1,6 +1,7 @@
 
 local PitBull4 = _G.PitBull4
 local L = PitBull4.L
+local issecretvalue = _G.issecretvalue
 
 local EXAMPLE_VALUE = 0.6
 
@@ -59,6 +60,10 @@ function PitBull4_ThreatBar:GetValue(frame)
 	end
 
 	local _, _, scaled_percent = UnitDetailedThreatSituation(frame.unit, "target")
+	-- Shared bar consumers require a public number, even without normalization.
+	if issecretvalue and issecretvalue(scaled_percent) then
+		return nil
+	end
 	if not scaled_percent then
 		return nil
 	end
@@ -74,7 +79,7 @@ end
 function PitBull4_ThreatBar:GetColor(frame, value)
 	if frame.unit and UnitExists(frame.unit) then
 		local _, status = UnitDetailedThreatSituation(frame.unit, "target")
-		if status then
+		if not (issecretvalue and issecretvalue(status)) and status then
 			return GetThreatStatusColor(status)
 		end
 	end
