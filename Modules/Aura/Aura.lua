@@ -28,7 +28,7 @@ end)
 
 function PitBull4_Aura:OnEnable()
 	self:RegisterEvent("PLAYER_REGEN_DISABLED")
-	self:RegisterEvent("PLAYER_REGEN_ENABLED", "UpdateAll")
+	self:RegisterEvent("PLAYER_REGEN_ENABLED")
 	self:RegisterEvent("PLAYER_ENTERING_WORLD")
 	self:RegisterEvent("UNIT_AURA")
 	-- Patch 031: Blizzard's 12.1 AuraContainer tracks a unit token, not the
@@ -67,6 +67,13 @@ function PitBull4_Aura:OnProfileChanged()
 	end
 end
 
+
+function PitBull4_Aura:PLAYER_REGEN_ENABLED()
+	if self.Lorenzo121RetryNativeFailures then
+		self:Lorenzo121RetryNativeFailures()
+	end
+	self:UpdateAll()
+end
 
 function PitBull4_Aura:PLAYER_REGEN_DISABLED()
 	-- Forever AuraContainers own combat aura updates. Do not reconfigure them
