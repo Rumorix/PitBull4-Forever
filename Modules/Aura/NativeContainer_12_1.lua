@@ -26,6 +26,8 @@ local native_enabled = true
 local native_frames = setmetatable({}, { __mode = "k" })
 local retired_states = setmetatable({}, { __mode = "k" })
 local failed_frames = setmetatable({}, { __mode = "k" })
+local retry_used = setmetatable({}, { __mode = "k" })
+local retry_pending = setmetatable({}, { __mode = "k" })
 local native_generation = 0
 local dynamic_refresh_count = 0
 local dynamic_refresh_mark_count = 0
@@ -514,11 +516,20 @@ local function native_methods_ready(state)
 end
 
 local function should_use_native(frame)
-	if not native_enabled or not frame or frame.force_show or failed_frames[frame] then
+	if not native_enabled or not frame or frame.force_show then
 		return false
 	end
 	local state = get_native_capabilities()
-	return state and state.is121OrNewer and state.auraContainerAddonLoaded and native_methods_ready(state)
+	if not (state and state.is121OrNewer and state.auraContainerAddonLoaded and native_methods_ready(state)) then
+		return false
+	end
+	if failed_frames[frame] then
+		if not retry_pending[frame] or (_G.InCombatLockdown and _G.InCombatLockdown()) then
+			return false
+		end
+		retry_pending[frame] = nil
+	end
+	return true
 end
 
 local function enum_value(container, key, fallback)
@@ -1260,6 +1271,8 @@ function PitBull4_Aura:Lorenzo121SetNativeEnabled(enabled)
 		retire_all_states()
 		for frame in pairs(failed_frames) do
 			failed_frames[frame] = nil
+			retry_used[frame] = nil
+			retry_pending[frame] = nil
 		end
 	end
 	if self.Lorenzo121 then
@@ -1274,8 +1287,28 @@ function PitBull4_Aura:Lorenzo121RebuildNativeContainers()
 	retire_all_states()
 	for frame in pairs(failed_frames) do
 		failed_frames[frame] = nil
+		retry_used[frame] = nil
+		retry_pending[frame] = nil
 	end
 	self:UpdateAll()
+end
+
+-- Grant one retry per failure episode at a safe lifecycle boundary. Ordinary
+-- aura updates never replenish the budget; a persistent API failure stays latched.
+function PitBull4_Aura:Lorenzo121RetryNativeFailures()
+	if not native_enabled or not next(failed_frames)
+		or (_G.InCombatLockdown and _G.InCombatLockdown()) then
+		return
+	end
+	if not self:Lorenzo121NativeRendererAvailable() then
+		return
+	end
+	for frame in pairs(failed_frames) do
+		if not retry_used[frame] then
+			retry_used[frame] = true
+			retry_pending[frame] = true
+		end
+	end
 end
 
 function PitBull4_Aura:Lorenzo121HasNativeFailures()
@@ -1388,6 +1421,8 @@ function PitBull4_Aura:Lorenzo121UpdateNativeFrame(frame)
 		return false, err
 	end
 	clear_failure(frame)
+	retry_used[frame] = nil
+	retry_pending[frame] = nil
 	return true
 end
 
