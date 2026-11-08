@@ -129,7 +129,7 @@ function PitBull4_Aggro:UNIT_THREAT_SITUATION_UPDATE(_, unit)
 		if db.enabled then
 			if db.kind == "HealthBar" then
 				if PitBull4_HealthBar and PitBull4_HealthBar:IsEnabled() then
-					PitBull4_HealthBar:UpdateFrame(frame)
+					PitBull4_HealthBar:Update(frame)
 				end
 			elseif db.kind == "Border" then
 				if PitBull4_Border and PitBull4_Border:IsEnabled() then
