@@ -1396,6 +1396,13 @@ function PitBull4_Aura:Lorenzo121ClearNativeFrame(frame)
 	if not state then
 		return
 	end
+	-- Match the combat reuse path: leave preconfigured managed groups intact.
+	-- Disabling/hiding them here cannot be undone safely when a transient unit
+	-- returns during combat. Blizzard owns their aura lifecycle; UpdateAll on
+	-- PLAYER_REGEN_ENABLED reconciles visibility and enablement out of combat.
+	if _G.InCombatLockdown and _G.InCombatLockdown() then
+		return
+	end
 	for _, group in pairs(state.groups or {}) do
 		hide_group(group)
 	end
